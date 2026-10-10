@@ -5,7 +5,8 @@ function Coll(items){ this.items = items; this.length = items.length; for (var i
 Coll.prototype.everyItem = function(){ var self=this; return { getElements: function(){ return self.items.slice(0); },
   cells: { everyItem: function(){ return { getElements: function(){ return []; } }; } } }; };
 function Para(story, text, index, italicRanges){ this.story=story; this.contents=text; this.index=index;
-  this.appliedParagraphStyle={name: /^Chapter/.test(text) ? 'Heading 1' : 'Body'};
+  this.appliedParagraphStyle={name: /^Chapter/.test(text) ? 'Heading 1' : (/^Quote:/.test(text) ? 'Block Quote' : 'Body')};
+  this.leftIndent = /^Indented:/.test(text) ? 36 : 0; this.firstLineIndent = 0;
   var self=this;
   this.textStyleRanges = new Coll((italicRanges||[[0,text.length,false]]).map(function(r){ return {fontStyle: r[2]?'Italic':'Regular', characters:{length:r[1]-r[0]}}; }));
   var ips=[]; for (var i=0;i<=text.length;i++) ips.push({index:i, para:self, parentTextFrames:[{parentPage:{name:String(story.page), documentOffset:story.page}}]});
@@ -18,6 +19,8 @@ function Topic(name, sort){ this.name=name; this.sortOrder=sort; this.isValid=tr
   this.topics = { itemByName: function(n){ return self.children[n] || {isValid:false}; }, add: function(n,s){ var t=new Topic(n,s); self.children[n]=t; return t; },
                   everyItem: function(){ return {getElements: function(){ var o=[]; for (var k in self.children) o.push(self.children[k]); return o; }}; } };
   this.pageReferences = { add: function(ip, type){ var pr={ip:ip}; self.refs.push(pr); return pr; } };
+  this.xrefs = [];
+  this.crossReferences = { add: function(t, kind){ self.xrefs.push([t.name, kind]); return {}; } };
   this.remove = function(){};
 }
 var rootIndex = new Topic('ROOT','');
@@ -44,6 +47,7 @@ var doc = { name: 'Test.indd', filePath: '/tmp', stories: new Coll(stories),
 global.app = { documents: {length:1}, activeDocument: doc, doScript: function(f){ f(); } };
 global.ScriptLanguage = {JAVASCRIPT:1}; global.UndoModes = {ENTIRE_SCRIPT:1};
 global.PageReferenceType = {CURRENT_PAGE:1}; global.ConditionIndicatorMethod={USE_HIGHLIGHT:1}; global.UIColors={YELLOW:1};
+global.CrossReferenceType = {SEE: 'see', SEE_ALSO: 'see also'};
 global.alert = function(m){ console.log('ALERT:', m); };
 function F(path){ this.path=path; this.exists=false; this.eof=true; this.buf=''; }
 F.prototype.open=function(){ return true; }; F.prototype.close=function(){ written[this.path]=this.buf; };
@@ -56,11 +60,11 @@ global.Window = function(){ var w = { alignChildren:'', add: function(type, b, i
    add: function(t2, b2, items2){ if (t2==='dropdownlist') return { selection:{index:0}, set selection2(v){} }; if (t2==='checkbox') return {value:true}; return { add: function(){ return {}; }, alignment:'' }; } };
    if (type==='dropdownlist') { return { _s:{index:0}, get selection(){ return this._s; }, set selection(v){ this._s={index: (typeof v==='number'?v:v.index)}; } }; }
    if (type==='checkbox') return {value:true};
-   if (type==='panel') { return { add: function(t2){ if (t2==='dropdownlist') return { _s:{index:0}, get selection(){ return this._s; }, set selection(v){ this._s={index:(typeof v==='number'?v:v.index)}; } }; return {}; } }; }
+   if (type==='panel') { return { add: function(t2){ if (t2==='dropdownlist') return { _s:{index:0}, get selection(){ return this._s; }, set selection(v){ this._s={index:(typeof v==='number'?v:v.index)}; } }; if (t2==='checkbox') return {value:true}; return {}; } }; }
    return c; }, show: function(){ return 1; } }; return w; };
 eval(fs.readFileSync(process.argv[2],'utf8').replace('#target indesign',''));
-function dump(t, d){ var o=''; for (var k in t.children){ var c=t.children[k]; o += Array(d+1).join('  ') + c.name + ' [' + c.sortOrder + ']' + (c.refs.length? ' x'+c.refs.length : '') + '\n' + dump(c, d+1); } return o; }
+function dump(t, d){ var o=''; for (var k in t.children){ var c=t.children[k]; o += Array(d+1).join('  ') + c.name + ' [' + c.sortOrder + ']' + (c.refs.length? ' x'+c.refs.length : '') + (c.xrefs.length ? ' ' + JSON.stringify(c.xrefs) : '') + '\n' + dump(c, d+1); } return o; }
 console.log(dump(rootIndex,0));
 for (var k in written) console.log('FILE', k, written[k].length, 'chars');
-var html = written['/tmp/Test - Scripture Index Proof List.html'] || '';
+var html = written['/tmp/Test - Index Proof List.html'] || '';
 console.log(html.split('\n').slice(4, 9).join('\n').slice(0, 1200));

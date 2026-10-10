@@ -13,10 +13,10 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scripture_index import docx_io as D            # noqa: E402
-from scripture_index import jsx                     # noqa: E402
-from scripture_index.parser import Scanner          # noqa: E402
-from scripture_index.settings import DEFAULTS, make_context  # noqa: E402
+from indicat import docx_io as D            # noqa: E402
+from indicat import jsx                     # noqa: E402
+from indicat.parser import Scanner          # noqa: E402
+from indicat.settings import DEFAULTS, make_context  # noqa: E402
 
 SENTENCES = {
     "en": ["Saul gave David wives (1 Sam. 25:43; 27:3). Later (2 Sam. 11:1–27; 12:9–10).",

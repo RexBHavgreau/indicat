@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 echo ==============================================
-echo  Scripture Index Builder - build the .exe
+echo  Indicat - build the .exe
 echo ==============================================
 
 rem Prefer the Python launcher (py) if it is installed.
@@ -24,15 +24,17 @@ echo Installing requirements ...
 
 echo Building ...
 "%VPY%" -m PyInstaller --noconfirm --clean --onefile --windowed ^
-    --name ScriptureIndexBuilder ^
+    --name Indicat ^
+    --icon "indicat\assets\indicat.ico" ^
     --collect-data docx ^
-    --add-data "scripture_index\js;scripture_index\js" ^
+    --add-data "indicat\js;indicat\js" ^
+    --add-data "indicat\assets;indicat\assets" ^
     --hidden-import win32com.client ^
     --hidden-import pythoncom ^
     run_app.py || goto :fail
 
 echo.
-echo Done:  dist\ScriptureIndexBuilder.exe
+echo Done:  dist\Indicat.exe
 echo.
 pause
 exit /b 0

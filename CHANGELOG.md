@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.3.0 — 2026-10-10
+
+* **Renamed Indicat** (Latin, "it points out"), with a manicule (☞) icon. The
+  program is `Indicat.exe`; the InDesign script is "Indicat for InDesign.jsx".
+  Created by Beaux Hargrove; free software under the GNU GPL v3 with an
+  author-credit term (see NOTICE.md).
+* **Settings carry over by themselves.** Indicat finds the settings of
+  Scripture Index Builder 0.2 and brings them over the first time it runs; later
+  versions read the same settings file. The InDesign script also picks up its
+  earlier preferences. Export and import are still available.
+* **Original-language word indexes.** Every Greek, Hebrew/Aramaic or Syriac word,
+  each in its own index, found by its alphabet. Forms that differ only in
+  accents, breathings or vowel points are grouped (switchable). Words to skip
+  (articles, conjunctions…) are editable for each index. Quotations are left out:
+  paragraphs in a quotation style, indented prose paragraphs, and runs of more
+  than four words (adjustable), unless the run is a list of short items
+  separated by commas, semicolons or slashes. Tables are read cell by cell.
+  Skipped quotations appear as grey rows and in the proofreading list, and can
+  be included.
+* **Tagged-language word indexes** (Latin, German, French…): the words the
+  manuscript marks as that language.
+* **Term sets.** Build a set from a text file (one term per line, forms
+  separated by |) or a CSV file (heading, subentry, match forms, sort as, see,
+  see also). Each set is its own index; options for case, accents, whole words,
+  English plurals, Hebrew prefixes and block quotations. Sets are saved and
+  exported with the settings, and can be exported back to CSV.
+* All indexes are found in the same scan and reviewed in one table (new Index
+  column and filter; Edit files a word under another heading). The
+  proofreading list covers every index, sorted by page.
+* Word: each index gets its own INDEX field and heading; note page numbers are
+  completed (33n12) or highlighted in word and term indexes too.
+* InDesign: the script builds the same indexes (each as a top-level entry of the
+  document's index) with See / See also cross-references; its word and term
+  engine is tested to match the app's exactly.
+* Output files are now "… - Indexed.docx", "… - Indexed (final).docx" and
+  "… - Index Proof List.docx/.csv".
+* Command line: `--words greek,hebrew`, `--terms file.csv`, `--no-scripture`.
+* Help menu: user guide, Support Indicat, and a new About box.
+* Update checking points to github.com/RexBHavgreau/indicat.
+
 ## 0.2.0 — 2026-10-10
 
 * **InDesign:** Tools > Export InDesign script (.jsx). The script indexes the open

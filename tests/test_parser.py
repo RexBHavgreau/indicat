@@ -6,8 +6,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import copy  # noqa: E402
 
-from scripture_index.parser import Scanner, parse_label  # noqa: E402
-from scripture_index.settings import DEFAULTS, make_context  # noqa: E402
+from indicat.parser import Scanner, parse_label  # noqa: E402
+from indicat.settings import DEFAULTS, make_context  # noqa: E402
 
 
 def ctx(lang="en", **kw):

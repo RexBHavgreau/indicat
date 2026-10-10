@@ -1,3 +1,36 @@
-[{"paras": ["Chapter One\r", "As Proverbs says, “Drink water” (Prov. 5:15; 6:24). Later (5:17) and Gen 1:1–2:3.\r", "In verse 18 he adds more. See Song of Sol. 7:11–8:7 and 1 Cor 7:4a.\r"],
-  "notes": [{"at": 40, "text": "Cf. 2:16; 5:10, 20. HALOT, 1:93."}]},
- {"paras": ["Chapter Two\r", "Romans 8:28 and (8:30). Tob 1:1 is apocryphal.\r"]}]
+[
+ {
+  "paras": [
+   "Chapter One\r",
+   "As Proverbs says, “Drink water” (Prov. 5:15; 6:24). Later (5:17) and Gen 1:1–2:3.\r",
+   "In verse 18 he adds more. See Song of Sol. 7:11–8:7 and 1 Cor 7:4a.\r"
+  ],
+  "notes": [
+   {
+    "at": 40,
+    "text": "Cf. 2:16; 5:10, 20. HALOT, 1:93."
+   }
+  ]
+ },
+ {
+  "paras": [
+   "Chapter Two\r",
+   "Romans 8:28 and (8:30). Tob 1:1 is apocryphal.\r"
+  ]
+ },
+ {
+  "paras": [
+   "Chapter Three\r",
+   "The word λόγος (cf. λόγου) and חֶסֶד appear; the covenant and the new covenant.\r",
+   "Quote: Ἐν ἀρχῇ ἦν ὁ λόγος, a covenant quoted at length here.\r",
+   "Indented: this indented paragraph of prose quotes the covenant at some length, mentioning λόγος and חֶסֶד in passing too.\r",
+   "John writes Ἐν ἀρχῇ ἦν ὁ λόγος, καὶ ὁ λόγος ἦν πρὸς τὸν θεόν (John 1:1).\r"
+  ],
+  "notes": [
+   {
+    "at": 20,
+    "text": "On חַסְדּוֹ see the lexicons; also the Davidic covenant."
+   }
+  ]
+ }
+]
