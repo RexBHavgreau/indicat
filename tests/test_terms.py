@@ -6,6 +6,10 @@ import copy
 import json
 import os
 import sys
+
+# Windows consoles default to a code page that has no Greek or Hebrew
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 import tempfile
 from pathlib import Path
 
@@ -195,7 +199,7 @@ def test_settings_migration():
         assert s2["term_sets"][0]["name"] == "x" and not S.migration_note
         exp = Path(d, "exp.json")
         S.export_to(s2, exp)
-        assert "term_sets" in json.loads(exp.read_text()) and "last_file" not in json.loads(exp.read_text())
+        assert "term_sets" in json.loads(exp.read_text(encoding="utf-8")) and "last_file" not in json.loads(exp.read_text(encoding="utf-8"))
 
 
 def main():

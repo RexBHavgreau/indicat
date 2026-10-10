@@ -9,6 +9,10 @@ import copy
 import json
 import subprocess
 import sys
+
+# Windows consoles default to a code page that has no Greek or Hebrew
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 import tempfile
 from pathlib import Path
 

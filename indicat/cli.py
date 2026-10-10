@@ -18,6 +18,8 @@ from .pipeline import (FOOTNOTE_MODES, SEPARATORS, BuildOptions, build, check_cu
 
 
 def main(argv=None):
+    if hasattr(sys.stdout, "reconfigure"):      # Greek and Hebrew in a Windows console
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(prog="indicat", description=f"Indicat {__version__}")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("scan", help="list references found")

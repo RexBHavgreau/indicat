@@ -7,6 +7,10 @@ or highlighted, for a Scripture index and for a word index with subentries.
 """
 import copy
 import sys
+
+# Windows consoles default to a code page that has no Greek or Hebrew
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 import types
 from pathlib import Path
 
