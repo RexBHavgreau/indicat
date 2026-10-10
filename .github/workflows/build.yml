@@ -1,5 +1,5 @@
 # Builds the Windows app and the InDesign script.
-# Runs on every pushed tag like v0.2.0 (and publishes a GitHub Release),
+# Runs on every pushed tag like v0.3.0 (and publishes a GitHub Release),
 # or by hand from the Actions tab ("Run workflow").
 name: Build
 
@@ -30,27 +30,32 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
-      - name: Test the parser (Python), the InDesign parser (JavaScript) and the InDesign script
+      - name: Test (Python and the InDesign JavaScript, which must agree)
         run: |
           python tests/test_parser.py
+          python tests/test_terms.py
           python tests/js_parity.py
+          python tests/terms_parity.py
+          python tests/word_mock_test.py
           python tests/indesign_mock_test.py
 
       - name: Build the .exe
         run: >
           pyinstaller --noconfirm --clean --onefile --windowed
-          --name ScriptureIndexBuilder
+          --name Indicat
+          --icon indicat/assets/indicat.ico
           --collect-data docx
           --hidden-import win32com.client --hidden-import pythoncom
-          --add-data "scripture_index/js;scripture_index/js"
+          --add-data "indicat/js;indicat/js"
+          --add-data "indicat/assets;indicat/assets"
           run_app.py
 
       - name: Write the default InDesign script
-        run: python -m scripture_index jsx "dist/Scripture Index Builder - English.jsx" --lang en
+        run: python -m indicat jsx "dist/Indicat for InDesign.jsx" --lang en
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ScriptureIndexBuilder
+          name: Indicat
           path: dist/*
 
       - name: Publish the release
