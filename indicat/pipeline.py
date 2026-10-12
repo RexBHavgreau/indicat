@@ -200,7 +200,9 @@ def active_defs(settings: dict, pkg: D.DocxPackage | None = None, messages: list
 
 
 def scan(path: str | Path, settings: dict | None = None,
-         distant_after: int = 15) -> tuple[ScanResult, D.DocxPackage]:
+         distant_after: int = 15, progress=None) -> tuple[ScanResult, D.DocxPackage]:
+    """progress(fraction, text): optional, for a progress bar."""
+    progress = progress or (lambda f, t="": None)
     settings = settings if settings is not None else SET.load()
     cat, lang = SET.make_context(settings)
     pkg = D.DocxPackage(path)
@@ -254,7 +256,10 @@ def scan(path: str | Path, settings: dict | None = None,
         items.sort(key=lambda h: (h.start, h.end))
         return items
 
-    for seg in pkg.body_segments:
+    nseg = max(1, len(pkg.body_segments))
+    for si, seg in enumerate(pkg.body_segments):
+        if si % 50 == 0:
+            progress(si / nseg, "Scanning")
         if seg.heading:
             sc.heading()
         hits, snaps = sc.scan_segment(seg.text, seg.italic, seg.idx,
@@ -380,13 +385,16 @@ def _expand_quotations(occs: list[Occurrence]) -> list[Occurrence]:
     return out
 
 
-def build(scan_res: ScanResult, opts: BuildOptions, log=print) -> BuildResult:
+def build(scan_res: ScanResult, opts: BuildOptions, log=print, progress=None) -> BuildResult:
     """Write the indexed copy, paginate with Word if possible, and write the proof list.
 
     The document is re-read from disk so the original file is never modified.
     """
+    progress = progress or (lambda f, t="": None)
     src = scan_res.path
-    fresh, pkg = scan(src, opts.settings if opts.settings is not None else scan_res.settings)
+    progress(0.02, "Reading the manuscript")
+    fresh, pkg = scan(src, opts.settings if opts.settings is not None else scan_res.settings,
+                      progress=lambda f, t="": progress(0.02 + 0.2 * f, "Reading the manuscript"))
     cat = fresh.catalog
     decided = {o.uid: o for o in scan_res.occurrences}
     occs = []
@@ -433,7 +441,10 @@ def build(scan_res: ScanResult, opts: BuildOptions, log=print) -> BuildResult:
     # insert from the end of each segment backwards so offsets stay valid
     to_write.sort(key=lambda o: (o.part, o.seg_idx, o.end), reverse=True)
     written = 0
-    for o in to_write:
+    progress(0.25, "Placing index entries")
+    for wi, o in enumerate(to_write):
+        if wi % 200 == 0:
+            progress(0.25 + 0.2 * wi / max(1, len(to_write)), "Placing index entries")
         seg = segs[(o.part, o.seg_idx)]
         o.ref.cat = cat
         if o.is_scripture:
@@ -492,6 +503,7 @@ def build(scan_res: ScanResult, opts: BuildOptions, log=print) -> BuildResult:
             msgs.append(f"Nothing was indexed for “{d.title}”, so it was left out.")
     D.append_index(pkg, opts.heading or cat.index_title, opts.columns, opts.separator, opts.new_page,
                    groups, single_letter, extra, scripture=fresh.scripture)
+    progress(0.5, "Saving the indexed copy")
     pkg.save(out_docx)
     log(f"Saved {out_docx.name}")
 
@@ -501,6 +513,7 @@ def build(scan_res: ScanResult, opts: BuildOptions, log=print) -> BuildResult:
         if word_com.available():
             try:
                 log("Opening the copy in Word to update fields and read page numbers…")
+                progress(None, "Word is laying out the pages and building the index")
                 msgs.extend(word_com.paginate(out_docx, occs, opts, log, final_docx))
                 used_word = True
             except Exception as exc:          # keep going without page numbers
@@ -517,7 +530,9 @@ def build(scan_res: ScanResult, opts: BuildOptions, log=print) -> BuildResult:
         final_docx = None
 
     from . import proof as P
+    progress(0.95, "Writing the proofreading list")
     P.write_proof(proof, csv_path, src, occs, opts, used_word, msgs, fresh)
+    progress(1.0, "Done")
     log(f"Saved {proof.name}")
     return BuildResult(out_docx, proof, csv_path, used_word, msgs, final_docx)
 

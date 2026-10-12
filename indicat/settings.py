@@ -96,6 +96,9 @@ def migrate(data: dict) -> dict:
             extra = [w for w in GREEK_SKIP.split() if w not in have]
             if extra:
                 g["skip"] = (g["skip"].rstrip() + " " + " ".join(extra)).strip()
+        # 0.3 kept one "Save results to" folder; 0.4 has a setting for where results go
+        if data.get("out_dir") and not data.get("save_location"):
+            data["save_location"], data["save_folder"] = "fixed", data["out_dir"]
         # names taken from file names lose "(CSV UTF-8)" and the like
         from .terms import clean_set_name
         for ts in data.get("term_sets") or []:

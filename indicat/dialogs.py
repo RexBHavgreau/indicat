@@ -219,19 +219,21 @@ class CustomBookDialog(tk.Toplevel):
 
 # ---------------------------------------------------------------------------
 class SettingsDialog(tk.Toplevel):
-    """Languages & abbreviations, index sections, custom books, import/export."""
+    """Edit > Preferences: where results go, Word, the PDF reader, updates, languages & abbreviations,
+    index sections, custom books, word indexes, term sets, import/export."""
 
-    TABS = ["abbr", "sections", "custom", "words", "tagged", "sets"]
+    TABS = ["general", "abbr", "sections", "custom", "words", "tagged", "sets"]
 
-    def __init__(self, master, settings: dict, tab: str = "abbr"):
+    def __init__(self, master, settings: dict, tab: str = "general"):
         super().__init__(master)
-        self.title("Settings")
+        self.title("Preferences")
         self.geometry("1040x700")
         self.transient(master)
         self.s = copy.deepcopy(settings)
         self.result = None
         nb = ttk.Notebook(self)
         nb.pack(fill="both", expand=True, padx=8, pady=8)
+        self._tab_general(nb)
         self._tab_abbr(nb)
         self._tab_sections(nb)
         self._tab_custom(nb)
@@ -247,6 +249,76 @@ class SettingsDialog(tk.Toplevel):
         ttk.Button(btns, text="Save", command=self._ok).pack(side="right", padx=6)
         center(self, master)
         self.grab_set()
+
+    # -- general ------------------------------------------------------------------
+    def _tab_general(self, nb):
+        from .pdf_viewer import VIEWERS
+        f = ttk.Frame(nb, padding=14)
+        nb.add(f, text="General")
+        box = ttk.LabelFrame(f, text="Where results are saved", padding=(10, 6))
+        box.pack(fill="x")
+        self.g_loc = tk.StringVar(value=self.s.get("save_location", "same"))
+        ttk.Radiobutton(box, text="In the same folder as the manuscript", value="same",
+                        variable=self.g_loc).pack(anchor="w")
+        row = ttk.Frame(box)
+        row.pack(fill="x", pady=2)
+        ttk.Radiobutton(row, text="Always in this folder:", value="fixed", variable=self.g_loc).pack(side="left")
+        self.g_folder = tk.StringVar(value=self.s.get("save_folder", ""))
+        ttk.Entry(row, textvariable=self.g_folder, width=60).pack(side="left", padx=6)
+        ttk.Button(row, text="Browse…", command=self._g_browse).pack(side="left")
+        ttk.Radiobutton(box, text="Ask each time", value="ask", variable=self.g_loc).pack(anchor="w")
+        ttk.Label(box, foreground="#555", wraplength=860, justify="left", text=(
+            "This applies to indexed copies, static copies, and indexes built from PDFs. Changing the folder "
+            "in the main window applies to that one build only.")).pack(anchor="w", pady=(4, 0))
+        wb = ttk.LabelFrame(f, text="Microsoft Word", padding=(10, 6))
+        wb.pack(fill="x", pady=(10, 0))
+        self.g_word = tk.BooleanVar(value=self.s.get("use_word", True))
+        ttk.Checkbutton(wb, variable=self.g_word, text=(
+            "Open the indexed copy in Word to build the index and read the page numbers")).pack(anchor="w")
+        ttk.Label(wb, foreground="#555", wraplength=860, justify="left", text=(
+            "Without Word the copy still gets its index entries and index field; open it in Word and press "
+            "Ctrl+A, then F9, to build the index.")).pack(anchor="w")
+        pb = ttk.LabelFrame(f, text="PDF reader (for “Open PDF at this page”)", padding=(10, 6))
+        pb.pack(fill="x", pady=(10, 0))
+        row = ttk.Frame(pb)
+        row.pack(fill="x")
+        self.viewer_labels = {v: k for k, v in VIEWERS.items()}
+        self.g_viewer = ttk.Combobox(row, values=list(self.viewer_labels), state="readonly", width=44)
+        self.g_viewer.set(VIEWERS.get(self.s.get("pdf_viewer", "auto"), VIEWERS["auto"]))
+        self.g_viewer.pack(side="left")
+        self.g_viewer_path = tk.StringVar(value=self.s.get("pdf_viewer_path", ""))
+        ttk.Entry(row, textvariable=self.g_viewer_path, width=40).pack(side="left", padx=6)
+        ttk.Button(row, text="Program…", command=self._g_prog).pack(side="left")
+        ttk.Label(pb, foreground="#555", wraplength=860, justify="left", text=(
+            "Acrobat and Acrobat Reader, SumatraPDF, Foxit, Edge, Chrome and Firefox can open a PDF at a "
+            "given page. With any other program the PDF opens and Indicat tells you the page.")).pack(anchor="w")
+        ub = ttk.LabelFrame(f, text="Updates", padding=(10, 6))
+        ub.pack(fill="x", pady=(10, 0))
+        self.g_upd = tk.BooleanVar(value=self.s.get("check_updates", True))
+        ttk.Checkbutton(ub, text="Check for a new version when Indicat starts", variable=self.g_upd).pack(anchor="w")
+
+    def _g_browse(self):
+        d = filedialog.askdirectory(parent=self)
+        if d:
+            self.g_folder.set(d)
+            self.g_loc.set("fixed")
+
+    def _g_prog(self):
+        f = filedialog.askopenfilename(parent=self, filetypes=[("Programs", "*.exe"), ("All files", "*.*")])
+        if f:
+            self.g_viewer_path.set(f)
+            self.g_viewer.set("Another program…")
+
+    def _collect_general(self):
+        loc = self.g_loc.get()
+        if loc == "fixed" and not self.g_folder.get().strip():
+            loc = "same"
+        self.s["save_location"] = loc
+        self.s["save_folder"] = self.g_folder.get().strip()
+        self.s["use_word"] = bool(self.g_word.get())
+        self.s["pdf_viewer"] = self.viewer_labels.get(self.g_viewer.get(), "auto")
+        self.s["pdf_viewer_path"] = self.g_viewer_path.get().strip()
+        self.s["check_updates"] = bool(self.g_upd.get())
 
     # -- abbreviations ------------------------------------------------------------
     def _tab_abbr(self, nb):
@@ -512,6 +584,14 @@ class SettingsDialog(tk.Toplevel):
         ttk.Checkbutton(opts, variable=self.w_group, text=(
             "Group forms that differ only in accents, breathings, vowel points or cantillation marks "
             "(λόγος = λογος; דָּבָר = דבר)")).grid(row=0, column=0, columnspan=6, sticky="w")
+        self.w_lemma = tk.BooleanVar(value=ws.get("dictionary_forms", True))
+        ttk.Checkbutton(opts, variable=self.w_lemma, text=(
+            "Greek and Hebrew: file every form under its dictionary form (λόγου, λόγοις → λόγος; "
+            "וְהָאָרֶץ → אֶרֶץ)")).grid(row=6, column=0, columnspan=6, sticky="w", pady=(4, 0))
+        self.w_subs = tk.BooleanVar(value=ws.get("forms_as_subentries", False))
+        ttk.Checkbutton(opts, variable=self.w_subs, text=(
+            "…and list the forms printed in the book as subentries under it")).grid(
+            row=7, column=0, columnspan=6, sticky="w", padx=(20, 0))
         self.w_block = tk.BooleanVar(value=ws["skip_block_quotes"])
         ttk.Checkbutton(opts, variable=self.w_block, text=(
             "Skip block quotations: paragraphs in a quotation style, and indented paragraphs of prose")).grid(
@@ -538,7 +618,7 @@ class SettingsDialog(tk.Toplevel):
         ttk.Label(opts, foreground="#555", wraplength=900, justify="left", text=(
             "Skipped quotations are listed in the review table (grey) and the proofreading list, so you "
             "can include one if the author discusses its words. Words in tables are counted cell by cell.")).grid(
-            row=5, column=0, columnspan=6, sticky="w", pady=(6, 0))
+            row=8, column=0, columnspan=6, sticky="w", pady=(6, 0))
 
         f.columnconfigure(2, weight=1)
         tgf = ttk.Frame(nb, padding=10)
@@ -648,6 +728,8 @@ class SettingsDialog(tk.Toplevel):
             ws["scripts"][key]["enabled"] = bool(on.get())
             ws["scripts"][key]["title"] = title.get().strip() or T.SCRIPT_INDEXES[key]["title"]
         ws["group_forms"] = bool(self.w_group.get())
+        ws["dictionary_forms"] = bool(self.w_lemma.get())
+        ws["forms_as_subentries"] = bool(self.w_subs.get())
         ws["skip_block_quotes"] = bool(self.w_block.get())
         for k, var, lo in (("max_run", self.w_run, 1), ("list_item_max", self.w_item, 1), ("min_letters", self.w_min, 1)):
             try:
@@ -810,6 +892,7 @@ class SettingsDialog(tk.Toplevel):
 
     # -- import / export / save --------------------------------------------------------
     def _collect(self):
+        self._collect_general()
         self._collect_words()
         self.s["section_order"] = list(self.sec_order)
         self.s["ot_order"] = self.ot_labels.get(self.ot_order.get())

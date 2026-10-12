@@ -47,7 +47,8 @@ def scan_pdf(path: str | Path, settings: dict | None = None, distant_after: int 
     msgs: list[str] = []
     defs = PL.active_defs(settings, None, msgs)
     t0 = time.time()
-    book = PdfBook(path, known_word_fn(lang, defs), progress)
+    book = PdfBook(path, known_word_fn(lang, defs),
+                   (lambda d, n: progress(0.8 * d / max(1, n), "Reading the PDF")) if progress else None)
     log(f"Read {len(book.pages)} pages in {time.time() - t0:.0f} s.")
     if book.ocr:
         dropped = [d.short for d in defs if d.kind != "terms"]
@@ -132,6 +133,8 @@ def scan_pdf(path: str | Path, settings: dict | None = None, distant_after: int 
     seg_no = [0]
     for seg in book.body_segments:
         seg_no[0] = seg.idx
+        if progress and seg.idx % 50 == 0:
+            progress(0.8 + 0.2 * seg.idx / max(1, len(book.body_segments)), "Scanning")
         if seg.heading:
             sc.heading()
         fixed = prepare(seg)
@@ -198,7 +201,10 @@ def output_names(stem: str, out_dir: Path, fmt: str) -> dict:
             "csv": out_dir / f"{stem} - Index Proof List.csv"}
 
 
-def build_pdf(res: PL.ScanResult, opts: PL.BuildOptions, fmt: str = "docx", log=print) -> PL.BuildResult:
+def build_pdf(res: PL.ScanResult, opts: PL.BuildOptions, fmt: str = "docx", log=print,
+              progress=None) -> PL.BuildResult:
+    progress = progress or (lambda f, t="": None)
+    progress(0.1, "Building the index")
     from . import static_index as SI
     from . import proof as P
     opts.out_dir.mkdir(parents=True, exist_ok=True)
@@ -219,8 +225,9 @@ def build_pdf(res: PL.ScanResult, opts: PL.BuildOptions, fmt: str = "docx", log=
     else:
         SI.write_docx(names["index"], model, opts, font)
     log(f"Saved {names['index'].name}")
+    progress(0.7, "Writing the proofreading list")
     P.write_proof(names["proof"], names["csv"], res.path, occs, opts, True, msgs + list(res.warnings), res,
                   page_source="read from the printed page numbers in the PDF")
     log(f"Saved {names['proof'].name}")
-    out = PL.BuildResult(names["index"], names["proof"], names["csv"], False, msgs)
-    return out
+    progress(1.0, "Done")
+    return PL.BuildResult(names["index"], names["proof"], names["csv"], False, msgs)
