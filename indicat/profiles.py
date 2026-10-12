@@ -354,6 +354,7 @@ Matt Mat
 Titus Tit
 1Pet 1 Pt
 Rev Apoc
+Wis Wisd
 1Macc 1 Mac
 2Macc 2 Mac
 3Macc 3 Mac
@@ -368,6 +369,10 @@ EN_FLAGGED = {
     "2Kgs": [("4 Kings", "Vulgate numbering: 4 Kings = 2 Kings"),
              ("IV Kings", "Vulgate numbering: 4 Kings = 2 Kings")],
     "Wis": [("WS", "unusual abbreviation for Wisdom")],
+    "1Chr": [("1 Paralip", "Vulgate name: 1 Paralipomenon = 1 Chronicles"),
+             ("1 Paralipomenon", "Vulgate name: 1 Paralipomenon = 1 Chronicles")],
+    "2Chr": [("2 Paralip", "Vulgate name: 2 Paralipomenon = 2 Chronicles"),
+             ("2 Paralipomenon", "Vulgate name: 2 Paralipomenon = 2 Chronicles")],
     "EpJer": [("Letter J", "unusual abbreviation for the Letter of Jeremiah")],
 }
 

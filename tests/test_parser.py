@@ -220,6 +220,17 @@ def test_titles_and_citations_in_italics():
         it[i:i + len(w)] = [True] * len(w)
     assert [x[0] for x in refs(t, it)] == ["citation", "citation", "italic"]
 
+def test_older_citation_styles():
+    cat, L = ctx("en", apocrypha=True)
+    t = "Matt. v. 3-12 and Gen. xii. 1; then ch. iii. ver. 4. Ps. cxix. 105; Mark i. e. no. Cant. ii. 4; 1 Paralip. xvi. 1"
+    hits, _ = Scanner(L, old_styles=True).scan_segment(t, [False] * len(t), 0)
+    assert [(h.status, h.ref.display() if h.ref else None) for h in hits] == [
+        ("explicit", "Matthew 5:3–12"), ("explicit", "Genesis 12:1"), ("inferred", "Genesis 3:4"),
+        ("explicit", "Psalms 119:105"), ("explicit", "Song of Solomon 2:4"), ("check-name", "1 Chronicles 16:1")]
+    hits, _ = Scanner(L).scan_segment(t, [False] * len(t), 0)        # off outside the PDF route
+    assert not any(h.ref and h.ref.book == "Matt" for h in hits)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

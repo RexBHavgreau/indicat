@@ -35,6 +35,8 @@ def roman_value(s: str) -> int | None:
 
 
 def page_sort_key(o) -> tuple:
+    if getattr(o, "pdf_page", None) is not None:
+        return (0, o.pdf_page, o.seq)
     if not o.page:
         return (2, 0, o.seq)
     rv = roman_value(o.page)
@@ -88,7 +90,8 @@ def _context_runs(par, context: str, size=8.5):
 CHECK_STATUSES = {"inferred", "inferred-weak", "check-name", "mt", "word-check"}
 
 
-def write_proof(path: Path, csv_path: Path, src: Path, occs, opts, used_word: bool, messages, res=None):
+def write_proof(path: Path, csv_path: Path, src: Path, occs, opts, used_word: bool, messages, res=None,
+                page_source: str | None = None):
     indexed = [o for o in occs if o.include and o.ref is not None
                and not (o.in_note and opts.footnote_mode == "skip")]
     multi = bool(res is not None and res.defs)
@@ -120,9 +123,10 @@ def write_proof(path: Path, csv_path: Path, src: Path, occs, opts, used_word: bo
     from .pipeline import FOOTNOTE_MODES
     p.add_run(FOOTNOTE_MODES.get(opts.footnote_mode, opts.footnote_mode))
     p.add_run("\nPage numbers: ").bold = True
-    p.add_run("read from Word's layout of the indexed copy on this computer. If fonts, printer, or "
+    p.add_run(page_source or (
+              "read from Word's layout of the indexed copy on this computer. If fonts, printer, or "
               "text change, rebuild before final proofing." if used_word else
-              "not available (Word automation was not used). Entries are listed in reading order.")
+              "not available (Word automation was not used). Entries are listed in reading order."))
     for m in messages:
         q = doc.add_paragraph(style="List Bullet")
         q.add_run(m).italic = True

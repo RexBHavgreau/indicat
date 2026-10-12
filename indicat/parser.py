@@ -18,6 +18,8 @@ Statuses (how the book of each chapter:verse was determined):
     mt             the Hebrew (MT) number of a verse also cited by its English number
     f-end          "f" on the last verse of a chapter (no verse follows)
     manual         added by hand in the review table
+    ocr            (PDF) read through an OCR slip: "Gen. l:l" = Genesis 1:1
+    interrupted    (PDF) a word hyphenated across a page break ("Deu-‖143‖teronomy")
 
 Indexed by default: explicit, chain, inferred, inferred-weak, check-name, mt, manual.
 """
@@ -34,7 +36,7 @@ DASH = "[–—\\-‑]"
 HLET = "א-ת"
 HN = "[" + HLET + "]{1,3}(?:[״\"”][" + HLET + "])?[׳'’]?"
 
-INDEXED_STATUSES = {"explicit", "chain", "inferred", "inferred-weak", "check-name", "mt", "manual"}
+INDEXED_STATUSES = {"explicit", "chain", "inferred", "inferred-weak", "check-name", "mt", "manual", "ocr"}
 STATUS_LABELS = {
     "explicit": "Book named",
     "chain": "Book named (list)",
@@ -52,6 +54,9 @@ STATUS_LABELS = {
     "mt": "Hebrew numbering (MT)",
     "f-end": "“f” at the end of a chapter",
     "manual": "Added by hand",
+    # PDF route
+    "ocr": "OCR reading corrected",
+    "interrupted": "Possible interrupted term (not indexed)",
 }
 
 # ---------------------------------------------------------------------------
@@ -103,6 +108,32 @@ def int_to_heb(n: int) -> str:
             out += c
             n -= v
             break
+    return out
+
+
+ROMAN_VALUES = {"i": 1, "v": 5, "x": 10, "l": 50, "c": 100}
+
+
+def roman_to_int(s: str) -> int | None:
+    """Lower- or upper-case roman numeral (up to 399) -> int, or None if it isn't one."""
+    t = (s or "").lower()
+    if not t or any(c not in ROMAN_VALUES for c in t) or not (t == s or t.upper() == s):
+        return None
+    total, prev = 0, 0
+    for c in reversed(t):
+        v = ROMAN_VALUES[c]
+        total += -v if v < prev else v
+        prev = max(prev, v)
+    return total if 0 < total < 400 and _int_to_roman(total) == t else None
+
+
+def _int_to_roman(n: int) -> str:
+    out = ""
+    for v, r in ((100, "c"), (90, "xc"), (50, "l"), (40, "xl"), (10, "x"), (9, "ix"), (5, "v"), (4, "iv"),
+                 (1, "i")):
+        while n >= v:
+            out += r
+            n -= v
     return out
 
 
@@ -289,6 +320,13 @@ class Patterns:
         self.mt_after = re.compile(SP + r"*(?:" + ("|".join(re.escape(w) for w in mtw) or "(?!)") +
                                    r")(?![A-Za-zÀ-ÿ])") if mtw else None
         self.bracket_alt = re.compile(SP + r"*\[" + SP + r"*$")
+        # older citation styles (PDF route): "Matt. v. 3", "ch. iii. ver. 4"
+        roman = r"(?:[ivxlc]{1,7}|[IVXLC]{1,7})"
+        rng = r"(?:" + SP + "?" + DASH + SP + r"?(?P<v2>\d{1,3}))?(?!\d)(?![:.,]\d)"
+        self.old_rc = re.compile(r"\.?" + SP + r"+(?P<rc>" + roman + r")\.?,?" + SP + r"*(?P<v>\d{1,3})" + rng)
+        self.old_cw = re.compile(r"(?<![\w])(?:[Cc]h|[Cc]hap|[Cc]hapter)\.?" + SP + r"*(?P<c>" + roman +
+                                 r"|\d{1,3})[.,]?" + SP + r"*(?:ver|vers|vs|v|verse)\.?" + SP + r"*(?P<v>\d{1,3})" +
+                                 rng)
 
 
 CITATION_BEFORE = re.compile(
@@ -355,14 +393,16 @@ def _in_parens(text: str, pos: int) -> bool:
 # Scanner
 # ---------------------------------------------------------------------------
 class Scanner:
-    def __init__(self, lang: Language, distant_after: int = 15):
+    def __init__(self, lang: Language, distant_after: int = 15, old_styles: bool = False):
         self.lang = lang
         self.cat = lang.cat
         self.pt = Patterns(lang)
         self.ctx = Context()
         self.distant_after = distant_after
+        self.old_styles = old_styles and lang.code == "en"
+        old = "(?P<old>" + self.pt.old_cw.pattern + ")|" if self.old_styles else ""
         self.master = re.compile(
-            "(?P<book>" + lang.book_re.pattern + ")|(?P<cv>" + self.pt.cv.pattern + ")|(?P<vw>" +
+            old + "(?P<book>" + lang.book_re.pattern + ")|(?P<cv>" + self.pt.cv.pattern + ")|(?P<vw>" +
             self.pt.vw.pattern + ")")
 
     def heading(self) -> None:
@@ -408,6 +448,10 @@ class Scanner:
             if not m:
                 break
             flush(m.start())
+            if self.old_styles and m.group("old") is not None:
+                pos = self._old_cw(m, text, italic, ctx, seg_no, hits)
+                last_book = chain = None
+                continue
             if m.group("book") is not None:
                 consumed = self._book(m, text, italic, ctx, seg_no, hits)
                 if consumed is None:
@@ -499,6 +543,30 @@ class Scanner:
                     self.cat.get(r.book).section == "OT":
                 self._mark_mt(h)
 
+    def _old_cw(self, m, text, italic, ctx, seg_no, hits):
+        """ "ch. iii. ver. 4": chapter and verse words, the book from context."""
+        s, e = m.start("old"), m.end("old")
+        c = m.group("c")
+        c = int(c) if c.isdigit() else roman_to_int(c)
+        v = int(m.group("v"))
+        v2 = m.group("v2")
+        if not c:
+            return e
+        if ctx.book is None:
+            hits.append(Hit(s, e, None, "unresolved", "chapter and verse with no book in context", raw=text[s:e]))
+            return e
+        r = self.ref(ctx.book, c, v, "", c if v2 else 0, expand_short(v, int(v2)) if v2 else 0, "")
+        weak = ctx.stale or (seg_no - ctx.book_seg) > self.distant_after
+        st = "inferred-weak" if weak else "inferred"
+        if _is_italic(italic, s, e, text):
+            st = "italic"
+        if not r.valid():
+            st = "invalid"
+        hits.append(Hit(s, e, r, st, "older style: chapter and verse words", raw=text[s:e]))
+        if st in INDEXED_STATUSES:
+            ctx.chapter = c
+        return e
+
     def _mark_mt(self, h):
         h.ref.mt = True
         if h.status in INDEXED_STATUSES:
@@ -514,13 +582,15 @@ class Scanner:
             return None
         start, end = m.start("book"), m.end("book")
         followed = (pt.cv_next.match(text, end) or pt.after_ch.match(text, end) or
-                    (pt.hcv_next.match(text, end) if pt.hcv_next else None))
+                    (pt.hcv_next.match(text, end) if pt.hcv_next else None) or
+                    (self._old_rc(text, end) if self.old_styles else None))
         if not followed:
             # back off to a shorter spelling that *is* followed by a number
             for cm, cinfo in lang.candidates_at(text, name_s)[1:]:
                 ce = cm.end()
                 if (pt.cv_next.match(text, ce) or pt.after_ch.match(text, ce) or
-                        (pt.hcv_next.match(text, ce) if pt.hcv_next else None)):
+                        (pt.hcv_next.match(text, ce) if pt.hcv_next else None) or
+                        (self._old_rc(text, ce) if self.old_styles else None)):
                     info, end, name_e = cinfo, ce, ce
                     break
         bid, kind, short, bare_ok = info
@@ -549,6 +619,23 @@ class Scanner:
                         ctx.chapter = r.c2 if r.c2 and r.c2 != r.c1 else r.c1
                     return hm.end(), None, dict(book=bid, chapter=ctx.chapter, status=st, end=hm.end(), heb=True)
 
+        om = self._old_rc(text, end) if self.old_styles else None
+        if om:
+            c, v = roman_to_int(om.group("rc")), int(om.group("v"))
+            v2 = om.group("v2")
+            r = self.ref(bid, c, v, "", c if v2 else 0, expand_short(v, int(v2)) if v2 else 0, "")
+            if bk.single_chapter:
+                r = None
+            if r is not None:
+                st = "italic" if ital else named
+                if not r.valid():
+                    st = "invalid"
+                hits.append(Hit(start, om.end(), r, st, flag or "older style: roman chapter number",
+                                raw=text[start:om.end()]))
+                if st in ("explicit", "check-name"):
+                    self._set_book(ctx, bid, seg_no)
+                    ctx.chapter = c
+                return om.end(), None, dict(book=bid, chapter=c, status=st, end=om.end())
         if pt.cv_next.match(text, end):
             if not ital:
                 self._set_book(ctx, bid, seg_no)
@@ -603,6 +690,10 @@ class Scanner:
         return m.end(), None, None
 
     # -------------------------------------------------------------------------
+    def _old_rc(self, text, end):
+        m = self.pt.old_rc.match(text, end)
+        return m if m and roman_to_int(m.group("rc")) else None
+
     def _cv(self, text, italic, ctx, seg_no, hits, s, e, c1, v1, s1, x, y, s2, last_book, chain):
         pt, lang = self.pt, self.lang
         gap = text[last_book[1]:s] if last_book else None
