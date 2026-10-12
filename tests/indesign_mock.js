@@ -62,6 +62,9 @@ global.Window = function(){ var w = { alignChildren:'', add: function(type, b, i
    if (type==='checkbox') return {value:true};
    if (type==='panel') { return { add: function(t2){ if (t2==='dropdownlist') return { _s:{index:0}, get selection(){ return this._s; }, set selection(v){ this._s={index:(typeof v==='number'?v:v.index)}; } }; if (t2==='checkbox') return {value:true}; return {}; } }; }
    return c; }, show: function(){ return 1; } }; return w; };
+// ExtendScript quirk: splice() returns undefined when it removes nothing
+var _splice = Array.prototype.splice;
+Array.prototype.splice = function(){ var r = _splice.apply(this, arguments); return r.length ? r : undefined; };
 eval(fs.readFileSync(process.argv[2],'utf8').replace('#target indesign',''));
 function dump(t, d){ var o=''; for (var k in t.children){ var c=t.children[k]; o += Array(d+1).join('  ') + c.name + ' [' + c.sortOrder + ']' + (c.refs.length? ' x'+c.refs.length : '') + (c.xrefs.length ? ' ' + JSON.stringify(c.xrefs) : '') + '\n' + dump(c, d+1); } return o; }
 console.log(dump(rootIndex,0));

@@ -159,7 +159,18 @@ function collectStories(doc) {
     return out;
 }
 
+var STAGE = "starting";
+function stage(s) { STAGE = s; }
 function main() {
+    try { main2(); }
+    catch (err) {
+        alert("Indicat stopped with an error.\n\n" + String(err.message || err) +
+            "\nScript line: " + (err.line || "?") + "\nStep: " + STAGE +
+            "\n\nPlease send a screenshot of this message.");
+    }
+}
+function main2() {
+    stage("opening the dialog");
     if (!app.documents.length) { alert("Open the document to index first."); return; }
     var doc = app.activeDocument;
     var prefs = showDialog(loadPrefs());
@@ -170,6 +181,12 @@ function main() {
         doc.viewPreferences.horizontalMeasurementUnits = MeasurementUnits.POINTS;
     } catch (e) { units = null; }
     try { run(doc, prefs); }
+    catch (err) {
+        // doScript reports every error at its own line, so say where it really happened
+        alert("Indicat stopped with an error.\n\n" + String(err.message || err) +
+            "\nScript line: " + (err.line || "?") + "\nStep: " + STAGE +
+            "\n\nPlease send a screenshot of this message.");
+    }
     finally {
         if (units !== null) { try { doc.viewPreferences.horizontalMeasurementUnits = units; } catch (e) {} }
     }
@@ -198,12 +215,15 @@ function run(doc, prefs) {
         var before = occs.length, h;
         if (doScripture) for (h = 0; h < hits.length; h++) occs.push({para: para, text: text, hit: hits[h], note: note, seq: occs.length});
         addTerms(para, text, note, meta);
-        var mine = occs.splice(before, occs.length - before);
+        // not splice(): in InDesign's ExtendScript it returns undefined when nothing is removed
+        var mine = occs.slice(before);
+        occs.length = before;
         for (h = 0; h < mine.length; h++) mine[h]._n = h;
         mine.sort(function (x, y) { return (x.hit.start - y.hit.start) || (x.hit.end - y.hit.end) || (x._n - y._n); });
         for (h = 0; h < mine.length; h++) { mine[h].seq = occs.length; occs.push(mine[h]); }
     }
 
+    stage("reading stories");
     var stories = collectStories(doc);
     for (si = 0; si < stories.length; si++) {
         var story = stories[si].story;
@@ -225,6 +245,7 @@ function run(doc, prefs) {
             for (k = 0; k < fnPos.length; k++) {
                 if (fnPos[k].idx >= pstart && fnPos[k].idx < pend) { anchors.push(fnPos[k].idx - pstart); here.push(fnPos[k]); }
             }
+            stage("scanning story " + (si + 1) + ", paragraph " + (pi + 1) + ": " + text.substring(0, 60));
             var res = scanner.scan(text, italicFlags(para), segNo, anchors);
             addAll(para, text, res.hits, null, paraMeta(para, false, isHead, needLangs));
             for (k = 0; k < here.length; k++) {
@@ -232,12 +253,14 @@ function run(doc, prefs) {
                 var fparas = here[k].fn.texts[0].paragraphs.everyItem().getElements(), fp;
                 for (fp = 0; fp < fparas.length; fp++) {
                     var ftext = String(fparas[fp].contents);
+                    stage("scanning a footnote in story " + (si + 1) + ": " + ftext.substring(0, 60));
                     var fres = scanner.scan(ftext, italicFlags(fparas[fp]), segNo, [], ctx);
                     addAll(fparas[fp], ftext, fres.hits, here[k].n, paraMeta(fparas[fp], false, false, needLangs));
                 }
             }
             segNo++;
         }
+        stage("scanning tables in story " + (si + 1));
         // table cells
         try {
             var cells = story.tables.everyItem().cells.everyItem().getElements(), c;
@@ -252,6 +275,7 @@ function run(doc, prefs) {
             }
         } catch (e) {}
     }
+    stage("grouping word forms");
     // one heading per group of word forms
     var wrefs = [], w;
     for (k = 0; k < occs.length; k++) {
@@ -262,6 +286,7 @@ function run(doc, prefs) {
     }
     chooseHeadings(wrefs);
 
+    stage("preparing the index");
     // --- index topics --------------------------------------------------------
     var index = doc.indexes.length ? doc.indexes[0] : doc.indexes.add();
     var topicCache = {};
@@ -306,6 +331,7 @@ function run(doc, prefs) {
         if (ref.sub) t = topic(t, ref.sub, ref.subSort || sortCode(ref.sub));
         return t;
     }
+    stage("placing index markers");
     // place markers paragraph by paragraph, last hit first
     var byPara = {}, order = [], o, counts = {};
     for (k = 0; k < occs.length; k++) {
@@ -350,6 +376,7 @@ function run(doc, prefs) {
         }
     }
 
+    stage("adding cross-references");
     // See / See also cross-references of term sets
     var xr = 0;
     for (k = 0; k < defs.length; k++) {
@@ -365,6 +392,7 @@ function run(doc, prefs) {
         }
     }
 
+    stage("reading page numbers");
     // pages
     for (k = 0; k < occs.length; k++) {
         o = occs[k];
@@ -377,7 +405,9 @@ function run(doc, prefs) {
             else o.page = "overset";
         } catch (e) {}
     }
+    stage("writing the proofreading list");
     writeProof(doc, occs, prefs);
+    stage("done");
     var parts = [];
     for (var cn in counts) if (counts.hasOwnProperty(cn)) parts.push(cn + " " + counts[cn]);
     alert((defs.length ? "Index markers added: " : "Scripture index markers added: ") + placed +
