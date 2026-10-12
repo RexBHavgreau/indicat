@@ -55,7 +55,7 @@ def test_book_from_running_text():
 
 def test_ambiguous_name_needs_number():
     assert refs("Peter said this. (3:16)") == [("unresolved", None)]
-    assert refs("the book of Acts (17:23–31)") == [("inferred", "Acts 17:23–31")]
+    assert refs("the book of Acts (17:23–31)") == [("explicit", "Acts 17:23–31")]
 
 
 def test_citations_rejected():
@@ -102,7 +102,8 @@ def test_risky_two_letter_abbreviations():
 
 
 def test_apocrypha_toggle():
-    assert all(x[1] is None for x in refs("Sir 24:3", apocrypha=False))
+    # always recognized (never misread as another book), indexed only when switched on
+    assert refs("Sir 24:3", apocrypha=False) == [("apocrypha", "Sirach 24:3")]
     assert refs("Sir 24:3") == [("explicit", "Sirach 24:3")]
 
 
@@ -128,7 +129,7 @@ def test_list_does_not_swallow_numbered_book():
 
 def test_french():
     r = refs("Jn 3,16 et Gn 1,1-3 ; 2,4.7. Voir 1 Co 13,4s.", lang="fr")
-    assert [x[1] for x in r] == ["Jean 3,16", "Genèse 1,1–3", "Genèse 2,4", "Genèse 2,7", "1 Corinthiens 13,4s."]
+    assert [x[1] for x in r] == ["Jean 3,16", "Genèse 1,1–3", "Genèse 2,4", "Genèse 2,7", "1 Corinthiens 13,4–5"]
 
 
 def test_hebrew_numerals_and_prefixes():
@@ -149,6 +150,72 @@ def test_custom_book():
     r = refs("As 1 En 1:9 says", custom_books=[cb])
     assert r == [("explicit", "1 Enoch 1:9")]
 
+
+
+# ---------------------------------------------------------------------------
+# 0.4.0: cases from the dissertation and the test manuscript
+# ---------------------------------------------------------------------------
+def test_unknown_abbreviation_never_borrows_a_book():
+    off = {"languages": {"en": {"disabled_sets": ["CMOS shorter"]}}}
+    r = refs("In Genesis 3:15 the promise. Later Ex. 24:16; 40:34–35.", **off)
+    assert r[1][0] == "unknown-book" and r[1][1] is None and r[2][0] == "unknown-book", r
+    r = refs("Genesis 3:15 … see Geneses 3:15 (a typo).")
+    assert r[1] == ("unknown-book", None)
+
+
+def test_apocrypha_forms_and_vulgate_kings():
+    r = refs("Tob 5:15, 6:8; 1 Mac 12:11; 2 Mac 1:18; Letter J 5; WS 2:24", apocrypha=True)
+    assert [x[1] for x in r] == ["Tobit 5:15", "Tobit 6:8", "1 Maccabees 12:11", "2 Maccabees 1:18",
+                                 "Letter of Jeremiah 5", "Wisdom of Solomon 2:24"]
+    assert refs("(3 Kings 8:10–11)") == [("check-name", "1 Kings 8:10–11")]
+    assert refs("the woman of the Apocalypse (12:1)") == [("explicit", "Revelation 12:1")]
+
+
+def test_gospel_writer_as_subject_and_person_named_like_a_book():
+    r = refs("In Luke 24 the verb recurs. Matthew uses it (16:21; 17:10), Mark uses it (8:31), "
+             "and John uses it (3:7, 14). As we read in Mark (3:34).")
+    assert [x[1] for x in r] == ["Luke 24", "Matthew 16:21", "Matthew 17:10", "Mark 8:31", "John 3:7",
+                                 "John 3:14", "Mark 3:34"]
+    r = refs("In Luke 1 the angel comes. Zechariah responds with doubt (1:20), Mary with belief (1:38).")
+    assert [x[1] for x in r] == ["Luke 1", "Luke 1:20", "Luke 1:38"]
+    assert refs("the book of Numbers counts the tribes. James argues the point (2:17).") == \
+        [("inferred", "James 2:17")]
+
+
+def test_ranges_suffixes_and_impossible_verses():
+    assert [x[1] for x in refs("Col 2:16–7, Dan 2:28–9")] == ["Colossians 2:16–17", "Daniel 2:28–29"]
+    r = refs("Exod 40:34f, Exod 40:34f., Rev 2:18ff., Exod 40:38f")
+    assert r == [("explicit", "Exodus 40:34–35"), ("explicit", "Exodus 40:34–35"),
+                 ("explicit", "Revelation 2:18ff."), ("f-end", "Exodus 40:38f.")]
+    assert [x[0] for x in refs("Joel 1:118 and Zechariah 1:62 and Isaiah 67:7")] == ["invalid"] * 3
+
+
+def test_sort_order_with_suffixes():
+    cat, _ = ctx()
+    labels = ["34", "34a", "34ff", "34–35", "34–36", "35"]
+    refs_ = [parse_label(cat, "Exod", "40:" + x) for x in labels]
+    assert [r.label() for r in sorted(refs_, key=lambda r: r.sort_key())] == \
+        ["40:34", "40:34a", "40:34ff.", "40:34–35", "40:34–36", "40:35"]
+
+
+def test_chapter_unclear_after_chapter_range():
+    r = refs("1 Kings 1–11 narrates his reign. In verse 23 it is repeated.")
+    assert r == [("chapter-only", "1 Kings 1–11"), ("unresolved", None)]
+
+
+def test_hebrew_numbering():
+    r = refs("Mal 3:23 [4:5]; Ps 51:1 (Eng.) is 51:3 in the MT; Joel 3:1 [2:28].")
+    assert r == [("mt", "Malachi 3:23 [MT]"), ("chain", "Malachi 4:5"), ("explicit", "Psalms 51:1"),
+                 ("mt", "Psalms 51:3 [MT]"), ("mt", "Joel 3:1 [MT]"), ("chain", "Joel 2:28")]
+
+
+def test_titles_and_citations_in_italics():
+    t = "Pace, “Dulia,” The Catholic Encyclopedia, 5:188; Gruenthaner, Mariology, 1:118; Bock, Luke 1:1–9:50."
+    it = [False] * len(t)
+    for w in ("The Catholic Encyclopedia", "Mariology", "Luke 1:1–9:50"):
+        i = t.index(w)
+        it[i:i + len(w)] = [True] * len(w)
+    assert [x[0] for x in refs(t, it)] == ["citation", "citation", "italic"]
 
 if __name__ == "__main__":
     for name, fn in list(globals().items()):

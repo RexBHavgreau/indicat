@@ -12,9 +12,14 @@ Statuses (how the book of each chapter:verse was determined):
     citation       volume:page in a bibliographic citation ("HALOT, 1:93")
     invalid        chapter/verse impossible for the book
     unresolved     chapter:verse with no book anywhere in context
+    unknown-book   a word before the reference that isn't a known book name ("Geneses 3:15")
+    check-name     a book name that is recognized but needs checking ("3 Kings" = 1 Kings)
+    apocrypha      an Apocrypha reference while the Apocrypha is not indexed
+    mt             the Hebrew (MT) number of a verse also cited by its English number
+    f-end          "f" on the last verse of a chapter (no verse follows)
     manual         added by hand in the review table
 
-Only explicit / chain / inferred / inferred-weak / manual are indexed by default.
+Indexed by default: explicit, chain, inferred, inferred-weak, check-name, mt, manual.
 """
 from __future__ import annotations
 
@@ -29,7 +34,7 @@ DASH = "[–—\\-‑]"
 HLET = "א-ת"
 HN = "[" + HLET + "]{1,3}(?:[״\"”][" + HLET + "])?[׳'’]?"
 
-INDEXED_STATUSES = {"explicit", "chain", "inferred", "inferred-weak", "manual"}
+INDEXED_STATUSES = {"explicit", "chain", "inferred", "inferred-weak", "check-name", "mt", "manual"}
 STATUS_LABELS = {
     "explicit": "Book named",
     "chain": "Book named (list)",
@@ -41,6 +46,11 @@ STATUS_LABELS = {
     "citation": "Volume:page citation",
     "invalid": "Impossible chapter/verse",
     "unresolved": "No book found",
+    "unknown-book": "Unknown book name",
+    "check-name": "Book name needs checking",
+    "apocrypha": "Apocrypha (not indexed)",
+    "mt": "Hebrew numbering (MT)",
+    "f-end": "“f” at the end of a chapter",
     "manual": "Added by hand",
 }
 
@@ -100,7 +110,17 @@ SFX_ORDER = {"": 0, "a": 1, "b": 2, "c": 3, "d": 4, "f": 5, "s": 5, "ff": 6, "ss
 
 
 def _norm_sfx(s: str | None) -> str:
-    return (s or "").rstrip(".")
+    return (s or "").rstrip(".").strip()
+
+
+def expand_short(a: int, b: int) -> int:
+    """A range written short: 16–7 means 16–17, 118–9 means 118–119."""
+    sa, sb = str(a), str(b)
+    if b < a and len(sb) < len(sa):
+        full = int(sa[:len(sa) - len(sb)] + sb)
+        if full > a:
+            return full
+    return b
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +136,7 @@ class Ref:
     v2: int = 0
     s2: str = ""
     cat: Catalog | None = field(default=None, repr=False, compare=False)
+    mt: bool = False                    # Hebrew (MT) numbering, printed with "[MT]"
 
     @property
     def book_name(self) -> str:
@@ -138,18 +159,21 @@ class Ref:
             if self.c2 and self.c2 != self.c1:
                 s += f"–{n(self.c2)}"
             return s
+        mt = " [MT]" if self.mt else ""
         start = f"{n(self.v1)}{self._sfx(self.s1)}" if single else f"{n(self.c1)}{sep}{n(self.v1)}{self._sfx(self.s1)}"
         if not self.c2:
-            return start
+            return start + mt
         if self.c2 == self.c1 or single:
-            return f"{start}–{n(self.v2)}{self._sfx(self.s2)}"
-        return f"{start}–{n(self.c2)}{sep}{n(self.v2)}{self._sfx(self.s2)}"
+            return f"{start}–{n(self.v2)}{self._sfx(self.s2)}{mt}"
+        return f"{start}–{n(self.c2)}{sep}{n(self.v2)}{self._sfx(self.s2)}{mt}"
 
     def sort_key(self) -> str:
+        """Canonical order within a book: 34, 34a, 34b, 34ff., 34–35, 34–36 …"""
         def sx(s):
             return str(SFX_ORDER.get(s, 0))
         end = f"{self.c2:03d}{self.v2:03d}{sx(self.s2)}" if self.c2 else "0000000"
-        return f"{self.c1:03d}{self.v1:03d}{sx(self.s1)}{end}"
+        lead = "8" if self.c2 else sx(self.s1)
+        return f"{self.c1:03d}{self.v1:03d}{lead}{sx(self.s1)}{end}" + ("M" if self.mt else "")
 
     def book_key(self) -> str:
         return self.cat.book_key(self.book)
@@ -157,18 +181,25 @@ class Ref:
     def display(self) -> str:
         return f"{self.book_name} {self.label()}"
 
-    def valid(self) -> bool:
+    def fits(self, numbering: str = "any") -> bool:
+        """Do the chapters and verses exist?  numbering: "eng", "orig" or "any"."""
         if not self.cat or self.book not in self.cat.books:
             return False
         bk = self.cat.get(self.book)
         for c, v in ((self.c1, self.v1), (self.c2, self.v2)):
             if c == 0:
                 continue
-            if c > bk.chapters or c < 1 or v > 176:
+            if c < 1 or c > bk.chapters or v > 176:
+                return False
+            mx = self.cat.verse_max(self.book, c, numbering)
+            if mx is not None and (mx == 0 or v > mx):
                 return False
         if self.c2 and (self.c2, self.v2) < (self.c1, self.v1):
             return False
         return True
+
+    def valid(self) -> bool:
+        return self.fits("any")
 
 
 @dataclass
@@ -206,7 +237,7 @@ class Patterns:
         self.sep = "[" + seps + "]"
         sfx_alts = []
         for s, _ in sorted(p.get("suffixes", []), key=lambda x: -len(x[0])):
-            sfx_alts.append(re.escape(s) + r"\.?")
+            sfx_alts.append(re.escape(s) + r"\.?(?![A-Za-zÀ-ÿ])")
         sfx_alts.append(r"[a-d](?![A-Za-z])")
         self.sfx = "(?:" + "|".join(sfx_alts) + ")"
         num = r"\d{1,3}"
@@ -231,9 +262,9 @@ class Patterns:
                                    r"?(?P<c2>\d{1,3}))?(?!\d)(?!" + self.sep + r"\d)")
         self.xch = re.compile(r"\.?" + SP + r"+(?P<c>\d{1,3})" + SP + "?" + DASH + SP + r"?(?P<x>\d{1,3})" +
                               self.sep + r"(?P<y>\d{1,3})(?!\d)")
-        self.cv_next = re.compile(r"\.?" + SP + r"*\d{1,3}" + self.sep + r"\d")
+        self.cv_next = re.compile(r"\.?" + SP + r"*\(?" + SP + r"*\d{1,3}" + self.sep + r"\d")
         self.hcv_next = re.compile(SP + r"*" + HN + SP + r"*[,:]" + SP + r"*" + HN) if self.hcv else None
-        self.attached_gap = re.compile(r"^\.?" + SP + r"*$")
+        self.attached_gap = re.compile(r"^\.?" + SP + r"*\(?" + SP + r"*$")
         cfs = "|".join(re.escape(w) for w in p.get("cf_words", [])) or "(?!)"
         self.chain_gap = re.compile(
             r"^" + SP + r"*(?:[;,]" + SP + r"*(?:(?:" + cfs + r")" + SP + r"*)?"
@@ -249,6 +280,15 @@ class Patterns:
             + r"(?:" + tight + r")\d)")
         intro = "|".join(re.escape(w) for w in p.get("intro", [])) or "(?!)"
         self.intro_before = re.compile(r"(?:" + intro + r")" + SP + r"+$")
+        self.next_word = re.compile(SP + r"+([a-zà-ÿ][\w’']*)")
+        self.author_verbs = set(p.get("author_verbs", []))
+        self.person_books = set(p.get("person_books", []))
+        self.not_books = set(p.get("not_books", []))
+        self.unknown_before = re.compile(r"(?:^|[^\w’'])((?:[1-4]" + SP + r"?)?[A-ZÀ-Þ][a-zà-ÿ]{0,14}\.?)" + SP + r"*$")
+        mtw = sorted(p.get("mt_words", []), key=len, reverse=True)
+        self.mt_after = re.compile(SP + r"*(?:" + ("|".join(re.escape(w) for w in mtw) or "(?!)") +
+                                   r")(?![A-Za-zÀ-ÿ])") if mtw else None
+        self.bracket_alt = re.compile(SP + r"*\[" + SP + r"*$")
 
 
 CITATION_BEFORE = re.compile(
@@ -260,18 +300,45 @@ CITATION_BEFORE = re.compile(
 TIME_AFTER = re.compile(SP + r"?(?:o['’]clock|Uhr\b|h\b)")
 
 
+AUTHOR_COMMA = re.compile(r"[A-ZÀ-Þ][\w’'\-]+," + SP + r"*$")
+
+
 def _is_italic(italic: list, s: int, e: int, text: str = "") -> bool:
+    """Is this span an italic *title* (not an italic quotation or emphasis)?"""
     if not italic or e <= s:
         return False
     span = italic[s:e]
     if not (span and all(span)):
         return False
+    if text and AUTHOR_COMMA.search(text[max(0, s - 40):s]):
+        return True                      # "Bock, Luke 1:1–9:50": a title after an author's name
     letters = [f for ch, f in zip(text, italic) if ch.isalpha()] if text else italic
     if letters and sum(letters) / len(letters) > 0.6:
         return False
     if text and re.search(r"[(\[;]" + SP + r"*(?:cf\.|vgl\." + SP + r"*)?$", text[max(0, s - 6):s]):
         return False
     return True
+
+
+def _after_italic_title(text: str, italic: list, s: int) -> bool:
+    """"…, The Catholic Encyclopedia, 5:188": a number right after an italic title and a comma."""
+    if not italic:
+        return False
+    k = s - 1
+    while k >= 0 and text[k] in "    ":
+        k -= 1
+    if k < 0 or text[k] != ",":
+        return False
+    k -= 1
+    while k >= 0 and text[k] in "”’\"'":
+        k -= 1
+    if k < 0 or k >= len(italic) or not italic[k]:
+        return False
+    j = k
+    while j > 0 and j - 1 < len(italic) and italic[j - 1]:
+        j -= 1
+    run = text[j:k + 1]
+    return bool(re.search(r"(?:^|\s)[A-ZÀ-Þ]", run))
 
 
 def _in_parens(text: str, pos: int) -> bool:
@@ -311,7 +378,7 @@ class Scanner:
         if y is not None:
             y = int(y)
             return self.ref(book, c1, v1, s1, c1 if x == c1 else x, y, s2)
-        return self.ref(book, c1, v1, s1, c1, x, s2)
+        return self.ref(book, c1, v1, s1, c1, expand_short(v1, x), s2)
 
     def scan_segment(self, text, italic, seg_no, anchors=None, ctx=None):
         use = ctx if ctx is not None else self.ctx
@@ -366,20 +433,77 @@ class Scanner:
                     is_, ie = base + im.start(), base + im.end()
                     if ctx.book is not None and ctx.chapter:
                         v2 = im.group("v2")
-                        r = self.ref(ctx.book, ctx.chapter, int(im.group("v")), im.group("s") or "",
-                                     ctx.chapter if v2 else 0, int(v2) if v2 else 0, im.group("s2") or "")
+                        v = int(im.group("v"))
+                        r = self.ref(ctx.book, ctx.chapter, v, im.group("s") or "",
+                                     ctx.chapter if v2 else 0, expand_short(v, int(v2)) if v2 else 0,
+                                     im.group("s2") or "")
                         hits.append(Hit(is_, ie, r, "verse-only" if r.valid() else "invalid",
                                         raw=text[s:e], reason=f"chapter {ctx.chapter} assumed from context"))
                     else:
-                        hits.append(Hit(is_, ie, None, "unresolved", raw=text[s:e],
-                                        reason="verse number with no chapter in context"))
+                        why = ("chapter unclear after a range of chapters" if ctx.book is not None
+                               else "verse number with no chapter in context")
+                        hits.append(Hit(is_, ie, None, "unresolved", raw=text[s:e], reason=why))
                 chain = None
                 last_book = None
                 pos = e
                 continue
             pos = m.end()
         flush(n + 1)
+        self._post(text, hits)
         return hits, snaps
+
+    # -------------------------------------------------------------------------
+    def _post(self, text, hits):
+        """f / ff, the Apocrypha, and the Hebrew (MT) number of a verse."""
+        steps = dict(self.lang.p.get("suffixes", []))
+        for h in hits:
+            r = h.ref
+            if r is None:
+                continue
+            if r.s1 and not r.c2 and r.v1 and steps.get(r.s1) == 1:
+                mx = self.cat.verse_max(r.book, r.c1)
+                if mx is not None and r.v1 >= mx:
+                    if h.status in INDEXED_STATUSES:
+                        h.status = "f-end"
+                    h.reason = f"no verse follows {r.c1}{self.cat.label_sep}{r.v1} in this chapter"
+                else:
+                    sfx = r.s1
+                    r.c2, r.v2, r.s1 = r.c1, r.v1 + 1, ""
+                    h.reason = f"“{r.v1}{sfx}” read as {r.v1}–{r.v2}"
+            elif r.s1 and steps.get(r.s1) == 99:
+                h.reason = h.reason or "open-ended (" + r.s1 + ")"
+            if h.status in INDEXED_STATUSES and not self.cat.ap_indexed and \
+                    self.cat.books.get(r.book) and self.cat.get(r.book).section == "AP":
+                h.status = "apocrypha"
+        pt = self.pt
+        for i, h in enumerate(hits):
+            r = h.ref
+            if r is None or not r.v1:
+                continue
+            # "Mal 3:23 [4:5]": the same verse in two numberings
+            nxt = hits[i + 1] if i + 1 < len(hits) else None
+            if nxt is not None and nxt.ref is not None and nxt.ref.v1 and \
+                    pt.bracket_alt.match(text[h.end:nxt.start]) and text[nxt.end:nxt.end + 1] == "]":
+                b = nxt.ref
+                if b.book != r.book:
+                    nxt.ref = b = Ref(r.book, b.c1, b.v1, b.s1, b.c2, b.v2, b.s2, self.cat)
+                if nxt.status in ("inferred", "inferred-weak", "invalid") and b.valid():
+                    nxt.status = "chain" if h.status == "explicit" else h.status
+                if self.cat.get(r.book).section == "OT":
+                    a_mt = (r.fits("orig") and not r.fits("eng")) or (b.fits("eng") and not b.fits("orig"))
+                    mt_hit, other = (h, nxt) if a_mt else (nxt, h)
+                    self._mark_mt(mt_hit)
+                    other.reason = other.reason or "the same verse is also cited in Hebrew numbering"
+                continue
+            if pt.mt_after is not None and pt.mt_after.match(text, h.end) and \
+                    self.cat.get(r.book).section == "OT":
+                self._mark_mt(h)
+
+    def _mark_mt(self, h):
+        h.ref.mt = True
+        if h.status in INDEXED_STATUSES:
+            h.status = "mt"
+        h.reason = "Hebrew (MT) numbering"
 
     # -------------------------------------------------------------------------
     def _book(self, m, text, italic, ctx, seg_no, hits):
@@ -402,6 +526,8 @@ class Scanner:
         bid, kind, short, bare_ok = info
         bk = self.cat.get(bid)
         ital = _is_italic(italic, name_s, name_e, text)
+        flag = lang.flag(text[name_s:name_e])
+        named = "check-name" if flag else "explicit"
 
         # Hebrew-numeral chapter,verse right after the book
         if pt.hcv is not None:
@@ -414,11 +540,11 @@ class Scanner:
                 y = heb_to_int(hm.group("y")) if hm.group("y") else None
                 if c1 and v1 and (hm.group("x") is None or x):
                     r = self.mkref(bid, c1, v1, "", x, y, "")
-                    st = "italic" if ital else "explicit"
+                    st = "italic" if ital else named
                     if not r.valid():
                         st = "invalid"
-                    hits.append(Hit(start, hm.end(), r, st, raw=text[start:hm.end()]))
-                    if st == "explicit":
+                    hits.append(Hit(start, hm.end(), r, st, flag, raw=text[start:hm.end()]))
+                    if st in ("explicit", "check-name"):
                         self._set_book(ctx, bid, seg_no)
                         ctx.chapter = r.c2 if r.c2 and r.c2 != r.c1 else r.c1
                     return hm.end(), None, dict(book=bid, chapter=ctx.chapter, status=st, end=hm.end(), heb=True)
@@ -426,15 +552,15 @@ class Scanner:
         if pt.cv_next.match(text, end):
             if not ital:
                 self._set_book(ctx, bid, seg_no)
-            return end, (bid, end, ital, start), None
+            return end, (bid, end, ital, start, flag), None
         xm = pt.xch.match(text, end)
         if xm:
             r = self.ref(bid, int(xm.group("c")), 1, "", int(xm.group("x")), int(xm.group("y")), "")
-            st = "italic" if ital else "explicit"
+            st = "italic" if ital else named
             if not r.valid():
                 st = "invalid"
-            hits.append(Hit(start, xm.end(), r, st, raw=text[start:xm.end()]))
-            if st == "explicit":
+            hits.append(Hit(start, xm.end(), r, st, flag, raw=text[start:xm.end()]))
+            if st in ("explicit", "check-name"):
                 self._set_book(ctx, bid, seg_no)
                 ctx.chapter = r.c2
             return xm.end(), None, dict(book=bid, chapter=r.c2, status=st, end=xm.end())
@@ -443,15 +569,15 @@ class Scanner:
             c = int(cm.group("c"))
             c2 = int(cm.group("c2")) if cm.group("c2") else 0
             if bk.single_chapter:
-                r = self.ref(bid, 1, c, "", 1 if c2 else 0, c2, "")
-                st = "italic" if ital else "explicit"
+                r = self.ref(bid, 1, c, "", 1 if c2 else 0, expand_short(c, c2) if c2 else 0, "")
+                st = "italic" if ital else named
                 if not r.valid():
                     st = "invalid"
-                hits.append(Hit(start, cm.end(), r, st, raw=text[start:cm.end()]))
+                hits.append(Hit(start, cm.end(), r, st, flag, raw=text[start:cm.end()]))
                 if not ital:
                     self._set_book(ctx, bid, seg_no)
                     ctx.chapter = 1
-                return cm.end(), None, dict(book=bid, chapter=1, status="explicit" if not ital else "italic",
+                return cm.end(), None, dict(book=bid, chapter=1, status=named if not ital else "italic",
                                             end=cm.end())
             r = self.ref(bid, c, 0, "", c2, 0, "")
             st = "italic" if ital else "chapter-only"
@@ -460,11 +586,19 @@ class Scanner:
             hits.append(Hit(start, cm.end(), r, st, raw=text[start:cm.end()]))
             if not ital and st != "invalid":
                 self._set_book(ctx, bid, seg_no)
-                ctx.chapter = c2 or c
+                ctx.chapter = None if (c2 and c2 != c) else c     # after "1 Kings 1–11" the chapter is unclear
             return cm.end(), None, None
         # bare mention
+        if ital:
+            return m.end(), None, None
+        nw = pt.next_word.match(text, end) if kind == "full" else None
+        if nw and nw.group(1) in pt.author_verbs:
+            self._set_book(ctx, bid, seg_no)          # "Matthew uses δεῖ eight times (16:21)"
+            return m.end(), None, None
+        if nw and bid in pt.person_books:
+            return m.end(), None, None                # "Zechariah responds with doubt (1:20)": a person
         allowed = kind == "full" and (bare_ok or self.pt.intro_before.search(text[max(0, start - 25):start]))
-        if allowed and not ital:
+        if allowed:
             self._set_book(ctx, bid, seg_no)
         return m.end(), None, None
 
@@ -475,22 +609,31 @@ class Scanner:
         ital = _is_italic(italic, s, e, text)
         hit_start = s
         book = None
+        reason = ""
         if last_book and pt.attached_gap.match(gap):
             book = last_book[0]
-            status = "italic" if (last_book[2] or ital) else "explicit"
+            status = "italic" if (last_book[2] or ital) else ("check-name" if last_book[4] else "explicit")
+            reason = last_book[4]
             hit_start = last_book[3]
         elif chain and chain.get("book") is not None and pt.chain_gap.match(text[chain["end"]:s]):
             book = chain["book"]
             status = "chain" if chain["status"] == "explicit" else chain["status"]
             if ital and status != "citation":
                 status = "italic"
-        elif chain and chain.get("book") is None and chain["status"] == "citation" and \
+        elif chain and chain.get("book") is None and chain["status"] in ("citation", "unknown-book") and \
                 pt.chain_gap.match(text[chain["end"]:s]):
-            status = "citation"
+            status = chain["status"]
+            reason = chain.get("reason", "")
         else:
             pre = text[max(0, s - 60):s]
-            if CITATION_BEFORE.search(pre):
+            uk = pt.unknown_before.search(pre)
+            if uk and (uk.group(1).rstrip(".").strip() in pt.not_books or lang.resolve(uk.group(1))):
+                uk = None
+            if CITATION_BEFORE.search(pre) or _after_italic_title(text, italic, s):
                 status = "citation"
+            elif uk:
+                status = "unknown-book"
+                reason = f"“{uk.group(1).strip()}” is not a book name Indicat knows"
             elif ctx.book is not None and (not lang.p.get("bare_requires_parens") or _in_parens(text, s)):
                 book = ctx.book
                 weak = ctx.stale or (seg_no - ctx.book_seg) > self.distant_after
@@ -500,13 +643,15 @@ class Scanner:
             else:
                 status = "unresolved"
         if book is None:
-            hits.append(Hit(s, e, None, status, raw=text[s:e], reason="volume:page" if status == "citation" else ""))
-            ch = dict(book=None, chapter=c1, status=status, end=e)
+            if status == "citation":
+                reason = "volume:page"
+            hits.append(Hit(s, e, None, status, raw=text[s:e], reason=reason))
+            ch = dict(book=None, chapter=c1, status=status, end=e, reason=reason)
             return self._cont(text, e, None, c1, status, hits, ch), None, ch
         r = self.mkref(book, c1, v1, s1, x, y, s2)
         if not r.valid():
             status = "invalid"
-        hits.append(Hit(hit_start, e, r, status, raw=text[hit_start:e]))
+        hits.append(Hit(hit_start, e, r, status, reason, raw=text[hit_start:e]))
         end_ch = r.c2 if (r.c2 and r.c2 != r.c1) else r.c1
         if status in INDEXED_STATUSES:
             ctx.book, ctx.chapter = book, end_ch
@@ -524,11 +669,12 @@ class Scanner:
                 return pos          # the number starts a book name ("und 1. Mose 1,1")
             if book is None:
                 hits.append(Hit(m.start("v"), m.end(), None, status, raw=text[m.start("v"):m.end()],
-                                reason="volume:page" if status == "citation" else ""))
+                                reason=chain.get("reason", "")))
             else:
                 v2 = m.group("v2")
-                r = self.ref(book, chapter, int(m.group("v")), m.group("s") or "",
-                             chapter if v2 else 0, int(v2) if v2 else 0, m.group("s2") or "")
+                v = int(m.group("v"))
+                r = self.ref(book, chapter, v, m.group("s") or "",
+                             chapter if v2 else 0, expand_short(v, int(v2)) if v2 else 0, m.group("s2") or "")
                 st = "chain" if status == "explicit" else status
                 if not r.valid():
                     st = "invalid"

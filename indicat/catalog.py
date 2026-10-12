@@ -5,7 +5,10 @@ what the parser, index writer and proof list consult.
 """
 from __future__ import annotations
 
+import json
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Sections.  Placeholders are planned corpora that can't be enabled yet.
@@ -94,6 +97,24 @@ class Catalog:
     index_title: str = "Scripture Index"
     label_sep: str = ":"
     numerals: str = "arabic"                         # arabic | hebrew
+    ap_indexed: bool = False                         # the Apocrypha is always recognized; indexed if True
+    verses: dict = field(default_factory=dict)       # id -> (English counts, original-text counts)
+
+    def verse_max(self, book_id: str, chapter: int, numbering: str = "any") -> int | None:
+        """Highest verse of a chapter (English, original, or either), or None if unknown."""
+        v = self.verses.get(book_id)
+        if not v:
+            return None
+        eng, orig = v
+        e = eng[chapter - 1] if 0 < chapter <= len(eng) else 0
+        o = orig[chapter - 1] if 0 < chapter <= len(orig) else 0
+        return {"eng": e, "orig": o}.get(numbering, max(e, o))
+
+    def chapter_max(self, book_id: str) -> int:
+        v = self.verses.get(book_id)
+        if v:
+            return max(len(v[0]), len(v[1]))
+        return self.books[book_id].chapters
 
     def get(self, book_id: str) -> BookInfo:
         return self.books[book_id]
@@ -161,13 +182,15 @@ def build_catalog(profile: dict, settings: dict) -> Catalog:
 
     names = profile.get("names", {})
     name_over = lset.get("names", {})
+    cat.ap_indexed = bool(settings.get("apocrypha", False))
+    data = verse_data()
     for sec, lst in (("OT", OT_BOOKS), ("AP", AP_BOOKS), ("NT", NT_BOOKS)):
-        if sec == "AP" and not settings.get("apocrypha", False):
-            continue
         for i, (bid, ch) in enumerate(lst):
             rank = order.index(bid) + 1 if sec == "OT" else i + 1
             nm = name_over.get(bid) or names.get(bid) or ENGLISH_FALLBACK.get(bid, bid)
             cat.books[bid] = BookInfo(bid, sec, ch, nm, rank)
+            if bid in data["eng"] or bid in data["orig"]:
+                cat.verses[bid] = (data["eng"].get(bid, []), data["orig"].get(bid, []))
     for cb in settings.get("custom_books", []):
         bid = cb.get("id") or ("X_" + cb.get("name", "?"))
         sec = cb.get("section", "OTHER")
@@ -176,6 +199,26 @@ def build_catalog(profile: dict, settings: dict) -> Catalog:
         cat.books[bid] = BookInfo(bid, sec, int(cb.get("chapters") or 150), cb.get("name", bid),
                                   int(cb.get("position") or 500), True)
     return cat
+
+
+_VERSES = None
+
+
+def data_dir() -> Path:
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+    p = base / "indicat" / "data"
+    return p if p.exists() else Path(__file__).resolve().parent / "data"
+
+
+def verse_data() -> dict:
+    """Highest verse of each chapter (tools/build_data.py): {"eng": {...}, "orig": {...}}."""
+    global _VERSES
+    if _VERSES is None:
+        try:
+            _VERSES = json.loads((data_dir() / "verses.json").read_text(encoding="utf-8"))
+        except Exception:
+            _VERSES = {"eng": {}, "orig": {}}
+    return _VERSES
 
 
 ENGLISH_FALLBACK = {

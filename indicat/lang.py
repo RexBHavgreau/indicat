@@ -12,7 +12,7 @@ GERESH = "׳"        # ׳
 GERSHAYIM = "״"     # ״
 GERESH_CLASS = "[׳'’]"
 GERSHAYIM_CLASS = "[״\"”]"
-ROMAN = {"1": "I", "2": "II", "3": "III"}
+ROMAN = {"1": "I", "2": "II", "3": "III", "4": "IV"}
 
 
 def strip_accents(s: str) -> str:
@@ -24,7 +24,7 @@ def norm_spelling(s: str) -> str:
     s = re.sub(SP + "+", " ", s.strip())
     s = s.replace("'", GERESH).replace("’", GERESH)
     s = s.replace('"', GERSHAYIM).replace("”", GERSHAYIM)
-    s = re.sub(r"^([123])\.?\s*(?=\D)", r"\1 ", s)          # 1Sam / 1. Sam / 1 Sam
+    s = re.sub(r"^([1-4])\.?\s*(?=\D)", r"\1 ", s)          # 1Sam / 1. Sam / 1 Sam
     if s.endswith(".") and not s.endswith(".."):
         s = s[:-1]
     return s
@@ -46,6 +46,7 @@ class Language:
         overrides = lset.get("books", {})
         # key -> (book_id, kind, short, bare_ok)
         self.spellings: dict[str, tuple] = {}
+        self.flags: dict[str, str] = {}           # spelling -> why it must be checked
         self.conflicts: list[str] = []
         bare_ok = set(profile.get("bare_ok", []))
         risky = set(profile.get("risky_abbr", []))
@@ -70,7 +71,7 @@ class Language:
 
         def add_variants(spelling: str, bid: str, kind: str):
             add(spelling, bid, kind)
-            m = re.match(r"^([123]) (.+)$", spelling)
+            m = re.match(r"^([1-4]) (.+)$", spelling)
             if m:
                 n, rest = m.groups()
                 if profile.get("roman"):
@@ -100,6 +101,11 @@ class Language:
                 for s in abbrs:
                     if norm_spelling(s) not in removed.get(bid, ()):
                         add_variants(s, bid, "abbr")
+        for bid, items in profile.get("flagged", {}).items():
+            for spelling, why in items:
+                if bid in catalog.books and norm_spelling(spelling) not in self.spellings:
+                    add(spelling, bid, "abbr")
+                    self.flags[norm_spelling(spelling)] = why
         for bid, o in overrides.items():
             for s in o.get("add", []):
                 add_variants(s, bid, "abbr" if core_len(s) < 5 else "full")
@@ -120,7 +126,7 @@ class Language:
     # -- regex ------------------------------------------------------------------
     def _pattern_for(self, key: str) -> str:
         out = []
-        m = re.match(r"^([123]) (.+)$", key)
+        m = re.match(r"^([1-4]) (.+)$", key)
         if m:
             out.append(m.group(1))
             out.append(r"\.?" + SP + "*" if self.p.get("dot_after_number") else SP + "?")
@@ -146,6 +152,9 @@ class Language:
 
     def resolve(self, text: str):
         return self.spellings.get(norm_spelling(text))
+
+    def flag(self, text: str) -> str:
+        return self.flags.get(norm_spelling(text), "")
 
     def candidates_at(self, text: str, pos: int):
         """All spellings that match at `pos` (longest first) -- used to back off

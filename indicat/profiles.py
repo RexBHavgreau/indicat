@@ -354,13 +354,49 @@ Matt Mat
 Titus Tit
 1Pet 1 Pt
 Rev Apoc
+1Macc 1 Mac
+2Macc 2 Mac
+3Macc 3 Mac
+4Macc 4 Mac
 """)
+
+# Spellings that are recognized but always flagged for checking (kept apart from the sets
+# so they can't be switched off by accident)
+EN_FLAGGED = {
+    "1Kgs": [("3 Kings", "Vulgate numbering: 3 Kings = 1 Kings"),
+             ("III Kings", "Vulgate numbering: 3 Kings = 1 Kings")],
+    "2Kgs": [("4 Kings", "Vulgate numbering: 4 Kings = 2 Kings"),
+             ("IV Kings", "Vulgate numbering: 4 Kings = 2 Kings")],
+    "Wis": [("WS", "unusual abbreviation for Wisdom")],
+    "EpJer": [("Letter J", "unusual abbreviation for the Letter of Jeremiah")],
+}
+
+# A writer named as the subject of a sentence ("Matthew uses δεῖ eight times (16:21)") sets the
+# book for the references that follow.  A person who shares a book's name doing something else
+# ("Zechariah responds with doubt (1:20)") does not.
+EN_AUTHOR_VERBS = ("says said writes wrote records recorded notes noted uses used employs employed "
+                   "quotes quoted cites cited mentions mentioned describes described tells told reports "
+                   "reported argues argued explains explained declares declared prophesies prophesied "
+                   "teaches taught insists insisted adds added states stated observes observed emphasizes "
+                   "emphasized presents presented portrays portrayed narrates narrated recounts recounted "
+                   "refers referred speaks spoke calls called repeats repeated echoes echoed alludes "
+                   "alluded").split()
+PERSON_BOOKS = ["Josh", "Ruth", "Ezra", "Neh", "Esth", "Job", "Isa", "Jer", "Ezek", "Dan", "Hos", "Joel",
+                "Amos", "Obad", "Jonah", "Mic", "Nah", "Hab", "Zeph", "Hag", "Zech", "Mal", "Matt", "Mark",
+                "Luke", "John", "Jas", "Jude", "Tob", "Jdt", "Sus"]
+# Capitalized words that often stand right before a chapter:verse without being a book name
+EN_NOT_BOOKS = ("See Cf Compare Contra In At And Also On Of For To From By With The A An As Verse Verses "
+                "Chapter Chapters Ch Chap Chs P Pp Vol Vols No Nos Col Cols Fig Table Note Notes Line Lines "
+                "Book Books Part Section Sec Art Item Page Pages Esp Especially Eg Ie Viz Ibid Idem Loc "
+                "Op Cit Sura Surah Year Years Age Ages Version Edition Ed Eds").split()
 
 ENGLISH = {
     "code": "en", "name": "English", "dir": "ltr", "numerals": "arabic", "label_sep": ":",
     "cv_seps": [":"], "verse_list_tight": [], "verse_list_spaced": [","],
-    "suffixes": [], "verse_words": ["v.", "vv.", "verse", "verses", "Verse", "Verses", "ver."],
+    "suffixes": [("ff", 99), ("f", 1)], "verse_words": ["v.", "vv.", "verse", "verses", "Verse", "Verses", "ver."],
     "and_words": ["and", "&"], "cf_words": ["cf.", "see", "see also", "contra"],
+    "flagged": EN_FLAGGED, "author_verbs": EN_AUTHOR_VERBS, "person_books": PERSON_BOOKS,
+    "not_books": EN_NOT_BOOKS, "mt_words": ["in the MT", "(MT)", "[MT]", "MT", "(Heb.)", "(Heb)", "(Hebrew)"],
     "intro": ["book of", "Book of", "Gospel of", "gospel of", "letter to", "Letter to",
               "epistle to", "Epistle to"],
     "ordinals": {"1": ["First"], "2": ["Second"], "3": ["Third"]},
@@ -554,6 +590,7 @@ SPANISH = {
     "sets": {"Común (RVR)": ES_COMMON},
     "unconfirmed_sets": [],
     "risky_abbr": ["Is", "Os", "Ex", "Es", "Re", "He", "Ap", "Mi", "Na", "Ti", "Ba", "Si", "Ag", "Am", "Ef", "Ro", "St", "Za", "Ne", "Lc", "Mr", "Mc"],
+    "person_books": PERSON_BOOKS, "mt_words": ["en el TM", "(TM)", "[TM]", "TM", "(heb.)", "(hebreo)"], "not_books": "Véase Vea Ver Cf En Y De Del La El Los Las Cap Caps Vol Vols Pág Págs Nota Notas Libro Versículo Versículos".split(),
     "bare_ok": ["Gen", "Exod", "Lev", "Deut", "Ps", "Prov", "Eccl", "Lam", "Rom", "Gal", "Eph",
                 "Phil", "Col", "Heb", "Isa", "Jer", "Ezek", "1Cor", "2Cor", "1Thess", "2Thess",
                 "1Tim", "2Tim", "1Pet", "2Pet", "1Sam", "2Sam", "1Kgs", "2Kgs", "1Chr", "2Chr"],
@@ -724,6 +761,7 @@ PORTUGUESE = {
     "sets": {"Almeida": PT_ALMEIDA},
     "unconfirmed_sets": [],
     "risky_abbr": ["Is", "Os", "Ex", "Ed", "Et", "Na", "Ne", "Ob", "Am", "Ag", "Ap", "Ct", "Sl", "Ml", "At", "Cl", "Gl", "Fm", "Tg", "Tt"],
+    "person_books": PERSON_BOOKS, "mt_words": ["no TM", "(TM)", "[TM]", "TM", "(heb.)", "(hebraico)"], "not_books": "Ver Veja Cf Em E De Do Da Os As Cap Caps Vol Vols Pág Págs Nota Notas Livro Versículo Versículos".split(),
     "bare_ok": ["Gen", "Exod", "Lev", "Deut", "Ps", "Prov", "Eccl", "Lam", "Rom", "Gal", "Eph",
                 "Phil", "Col", "Heb", "Isa", "Ezek", "1Cor", "2Cor", "1Thess", "2Thess",
                 "1Tim", "2Tim", "1Pet", "2Pet", "1Sam", "2Sam", "1Kgs", "2Kgs", "1Chr", "2Chr"],
@@ -976,6 +1014,7 @@ FRENCH = {
     "sets": {"Bible de Jérusalem / TOB": FR_BJ, "Segond": FR_SEGOND},
     "unconfirmed_sets": [],
     "risky_abbr": ["Es", "Os", "Ex", "Am", "Ac", "Ap", "Ga", "Ha", "Mi", "Na", "So", "Ba", "Si", "He", "Lu", "La", "Ca", "Da", "De", "Ge", "No", "Ru", "Ro", "Ja", "Tt", "Ph", "Ep", "Ag", "Za", "Ab", "Sg", "Ne", "Ml", "Mc", "Lc", "Ct", "Jg", "Dt"],
+    "person_books": PERSON_BOOKS, "mt_words": ["(TM)", "[TM]", "TM", "(hébr.)", "(hébreu)"], "not_books": "Voir Cf En Et De Du La Le Les Chap Vol Vols Note Notes Livre Verset Versets".split(),
     "bare_ok": ["Gen", "Exod", "Lev", "Deut", "Ps", "Prov", "Eccl", "Lam", "Rom", "Gal", "Eph",
                 "Phil", "Col", "Heb", "Isa", "Ezek", "Jer"],
 }
@@ -1173,6 +1212,7 @@ GERMAN = {
     "sets": {"Loccumer Richtlinien": DE_LOCCUM, "Luther / traditionell": DE_LUTHER},
     "unconfirmed_sets": [],
     "risky_abbr": ["Am", "Ex", "Mi", "Ri", "Hi", "Mo"],
+    "person_books": PERSON_BOOKS, "mt_words": ["(MT)", "[MT]", "MT", "(hebr.)", "(Hebr.)"], "not_books": "Vgl Siehe In Und Der Die Das Kap Bd Bde Anm Buch Vers Verse".split(),
     "bare_ok": ["Gen", "Exod", "Lev", "Deut", "Ps", "Prov", "Eccl", "Song", "Lam", "Rom", "Gal",
                 "Eph", "Phil", "Col", "Heb", "Isa", "Jer", "Ezek", "Rev"],
 }
@@ -1311,6 +1351,7 @@ HEBREW = {
     "unconfirmed_sets": ["קיצורים נפוצים (common)"],
     "unconfirmed_names": ["NT", "AP"],
     "risky_abbr": [],
+    "person_books": [], "mt_words": [], "not_books": [],
     "bare_ok": ["Gen", "Exod", "Lev", "Num", "Deut", "Ps", "Prov", "Eccl", "Lam", "Isa", "Jer",
                 "Ezek", "1Sam", "2Sam", "1Kgs", "2Kgs", "1Chr", "2Chr", "Song"],
 }
