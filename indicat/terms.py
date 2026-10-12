@@ -539,6 +539,12 @@ class CompiledSet:
     crossrefs: list        # [(TermRef, "see"|"see_also", target)]
 
 
+def split_targets(s) -> list[str]:
+    """ "Mary; Dormition" or "Mary | Dormition" -> ["Dormition", "Mary"] (alphabetical, as CMOS has it)."""
+    parts = [x.strip() for x in re.split(r"[;|]", s or "") if x.strip()]
+    return sorted(dict.fromkeys(parts), key=lambda x: (fold_str(x), x))
+
+
 def compile_set(d: IndexDef) -> CompiledSet:
     o = d.opts
     case, marks = not o.get("case_sensitive"), bool(o.get("ignore_marks", True))
@@ -549,13 +555,12 @@ def compile_set(d: IndexDef) -> CompiledSet:
             continue
         sub = (e.get("sub") or "").strip()
         ref = TermRef(d.id, h, sub, (e.get("sort") or "").strip(), (e.get("sub_sort") or "").strip())
-        see = (e.get("see") or "").strip()
-        also = (e.get("see_also") or "").strip()
+        see = split_targets(e.get("see"))
+        also = split_targets(e.get("see_also"))
         if see:
-            xrefs.append((ref, "see", see))
+            xrefs.extend((ref, "see", t) for t in see)
             continue
-        if also:
-            xrefs.append((ref, "see_also", also))
+        xrefs.extend((ref, "see_also", t) for t in also)
         fl = [f for f in (e.get("forms") or []) if f and f.strip()]
         if not fl:
             fl = [sub or h]
@@ -909,7 +914,21 @@ def read_term_file(path: str | Path) -> tuple[list[dict], list[str]]:
                             "see_also": ""})
     if not entries:
         problems.append("No terms were found in the file.")
+    lost = [f for e in entries for f in [e["heading"]] + e.get("forms", []) if re.search(r"\?\?|\w\?|\?\w", f)]
+    if lost:
+        problems.insert(0, f"{len(lost)} term(s) contain question marks where letters should be (e.g. "
+                           f"“{lost[0]}”). Excel's plain “CSV (Comma delimited)” format replaces Greek, "
+                           "Hebrew and other letters it can't store with ?. Save the file as "
+                           "“CSV UTF-8 (Comma delimited)” and load it again.")
     return entries, problems
+
+
+def clean_set_name(stem: str) -> str:
+    """A term set's name from its file name, without "(CSV UTF-8)", "- Copy" and the like."""
+    name = re.sub(r"\s*\((?:[^()]*\b(?:csv|utf-?8|comma|delimited|windows|ms-dos|macintosh|excel|tab)\b[^()]*)\)",
+                  "", stem, flags=re.I)
+    name = re.sub(r"\s*-\s*(?:copy|kopie|copia)(?:\s*\(\d+\))?$", "", name, flags=re.I)
+    return name.strip(" -_") or stem
 
 
 def write_term_csv(path: str | Path, entries: list[dict]) -> None:

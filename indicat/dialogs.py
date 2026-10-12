@@ -742,7 +742,7 @@ class SettingsDialog(tk.Toplevel):
         entries = self._load_file(path)
         if entries is None:
             return
-        name = Path(path).stem
+        name = T.clean_set_name(Path(path).stem)
         ts = {"id": T.new_set_id(self.sets), "name": name, "title": name if name.lower().startswith("index")
               else f"Index of {name}", "enabled": True, "options": dict(T.TERM_SET_OPTIONS),
               "entries": entries, "source": Path(path).name}

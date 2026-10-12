@@ -456,7 +456,18 @@ def build(scan_res: ScanResult, opts: BuildOptions, log=print) -> BuildResult:
             msgs.append(f"Could not place an index field for {o.display} ({o.where}); add it by hand.")
     log(f"Inserted {written} index entry fields.")
 
-    D.ensure_index_styles(pkg, opts.leader if opts.separator == "\t" else None, opts.columns)
+    settings = opts.settings if opts.settings is not None else scan_res.settings
+    font = None
+    if settings.get("index_font", "body") == "body":
+        font = pkg.body_font()
+    D.ensure_index_styles(pkg, opts.leader if opts.separator == "\t" else None, opts.columns, font)
+    if font:
+        D.set_index_heading_font(pkg, font)
+        log(f"Index font: {font} (the body text font).")
+    shown = font or pkg.styles.font(pkg.styles.id_for_name("index 1"))
+    if shown and font_installed(shown) is False:
+        msgs.append(f"The index is set in “{shown}”, which isn't installed on this computer, so Word will "
+                    "show it in a substitute font (and page breaks may differ from the printer's).")
     used_groups = {o.letter for o in to_write if o.bookmark and o.is_scripture}
     groups = [(L, t) for L, t in cat.groups_in_order() if L in used_groups]
     see_words = T.SEE_WORDS.get(cat_lang(fresh), T.SEE_WORDS["en"])
@@ -465,12 +476,16 @@ def build(scan_res: ScanResult, opts: BuildOptions, log=print) -> BuildResult:
     for d in fresh.defs:
         xrefs = []
         if d.kind == "terms":
+            grouped: dict = {}
             for ref, kind, target in T.compile_set(d).crossrefs:
-                text = f"{see_words[0] if kind == 'see' else see_words[1]} {target}"
+                grouped.setdefault((ref.display(), kind), (ref, kind, []))[2].append(target)
+            for ref, kind, targets in grouped.values():
+                word = see_words[0] if kind == "see" else see_words[1]
+                text = f"{word} {'; '.join(targets)}"
                 entry = D.escape_entry(ref.heading) + (f":{D.escape_entry(ref.sub)}" if ref.sub else "")
                 parts = ref.yomi().split(":", 1) if ref.sub else [ref.yomi()]
                 xrefs.extend(D.xe_elements(entry, ":".join(D.escape_entry(x) for x in parts), None, None, None,
-                                           d.letter, see=text.replace('"', "'")))
+                                           d.letter, see=text.replace('"', "'"), see_italic=len(word)))
         if d.letter in used_letters or xrefs:
             extra.append((d.title, d.letter, xrefs))
         else:
@@ -505,6 +520,40 @@ def build(scan_res: ScanResult, opts: BuildOptions, log=print) -> BuildResult:
     P.write_proof(proof, csv_path, src, occs, opts, used_word, msgs, fresh)
     log(f"Saved {proof.name}")
     return BuildResult(out_docx, proof, csv_path, used_word, msgs, final_docx)
+
+
+def font_installed(name: str) -> bool | None:
+    """Is a font installed?  None when it can't be told (not Windows)."""
+    import sys
+    if sys.platform != "win32" or not name:
+        return None
+    try:
+        import winreg
+    except Exception:
+        return None
+    want = name.lower()
+    key = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts"
+    found_any = False
+    for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+        try:
+            with winreg.OpenKey(hive, key) as k:
+                i = 0
+                while True:
+                    try:
+                        val = winreg.EnumValue(k, i)[0]
+                    except OSError:
+                        break
+                    i += 1
+                    found_any = True
+                    base = re.sub(r"\s*\((?:TrueType|OpenType|VGA res)\)\s*$", "", val, flags=re.I).lower()
+                    names = [x.strip() for x in base.split("&")]
+                    if any(n == want or n.startswith(want + " ") and n[len(want) + 1:].split()[0] in
+                           ("regular", "bold", "italic", "light", "medium", "semibold", "black", "condensed")
+                           for n in names):
+                        return True
+        except OSError:
+            continue
+    return False if found_any else None
 
 
 def cat_lang(res: ScanResult) -> str:

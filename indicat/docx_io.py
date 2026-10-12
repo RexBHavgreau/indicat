@@ -60,6 +60,7 @@ class Segment:
     level: int | None = None       # heading level (0 = top) when heading
     biblio: bool = False           # in the bibliography
     style_names: tuple = ()        # paragraph style and the styles it is based on
+    style_id: str | None = None    # paragraph style
     note_kind: str | None = None   # for note segments
     note_id: str | None = None
     in_simple_field: list = field(default_factory=list)   # spans inside w:fldSimple (not writable)
@@ -213,6 +214,47 @@ class Styles:
     def id_for_name(self, name: str):
         return self.name_to_id.get(name.lower())
 
+    # -- fonts -------------------------------------------------------------------
+    theme_fonts: dict = {}
+
+    def _font_of(self, rfonts) -> str | None:
+        if rfonts is None:
+            return None
+        f = rfonts.get(w("ascii")) or rfonts.get(w("hAnsi"))
+        if f:
+            return f
+        th = rfonts.get(w("asciiTheme")) or rfonts.get(w("hAnsiTheme"))
+        if th:
+            return self.theme_fonts.get("major" if th.startswith("major") else "minor")
+        return None
+
+    def default_para_style(self):
+        if self.root is not None:
+            for st in self.root.iter(w("style")):
+                if st.get(w("type")) == "paragraph" and st.get(w("default")) in ("1", "true", "on"):
+                    return st.get(w("styleId"))
+        return self.id_for_name("normal")
+
+    def own_font(self, sid) -> str | None:
+        """The font a style names itself (not inherited)."""
+        st = self.by_id.get(sid)
+        return self._font_of(st.find(f"{w('rPr')}/{w('rFonts')}")) if st is not None else None
+
+    def font(self, sid) -> str | None:
+        """The font text in this paragraph style is set in: the style, the styles it is based
+        on, then the document defaults (and the theme's body font)."""
+        if sid is None or sid not in self.by_id:
+            sid = self.default_para_style()
+        for st in self._chain(sid) if sid else ():
+            f = self._font_of(st.find(f"{w('rPr')}/{w('rFonts')}"))
+            if f:
+                return f
+        if self.root is not None:
+            f = self._font_of(self.root.find(f"{w('docDefaults')}/{w('rPrDefault')}/{w('rPr')}/{w('rFonts')}"))
+            if f:
+                return f
+        return self.theme_fonts.get("minor")
+
 
 def _onoff(el) -> bool:
     v = el.get(WVAL)
@@ -234,6 +276,7 @@ class DocxPackage:
             self.styles_tree = (etree.fromstring(z.read("word/styles.xml")).getroottree()
                                 if "word/styles.xml" in names else None)
         self.styles = Styles(self.styles_tree.getroot() if self.styles_tree is not None else None)
+        self.styles.theme_fonts = self._theme_fonts()
         self.body_segments: list[Segment] = []
         self.note_segments: dict[tuple[str, str], list[Segment]] = {}
         self.note_ordinals: dict[tuple[str, str], int] = {}
@@ -242,6 +285,37 @@ class DocxPackage:
         self.existing_index = 0
         self.tracked_changes = 0
         self._read()
+
+    def _theme_fonts(self) -> dict:
+        try:
+            with zipfile.ZipFile(self.path) as z:
+                data = z.read("word/theme/theme1.xml")
+        except Exception:
+            return {}
+        out = {}
+        try:
+            root = etree.fromstring(data)
+            A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+            for kind in ("major", "minor"):
+                lat = root.find(f".//{A}{kind}Font/{A}latin")
+                if lat is not None and lat.get("typeface"):
+                    out[kind] = lat.get("typeface")
+        except Exception:
+            pass
+        return out
+
+    def body_font(self) -> str | None:
+        """The font of the body text: that of the paragraph style holding the most text
+        (headings, notes, tables and the bibliography left out)."""
+        count: dict = {}
+        for seg in self.body_segments:
+            if seg.heading or seg.in_table or seg.biblio:
+                continue
+            count[seg.style_id] = count.get(seg.style_id, 0) + len(seg.text)
+        if not count:
+            return self.styles.font(None)
+        sid = max(count, key=count.get)
+        return self.styles.font(sid)
 
     # -- reading ---------------------------------------------------------------
     def _read(self):
@@ -445,6 +519,7 @@ def _walk_part(root, part: str, styles: Styles, pkg: DocxPackage, start: int = 0
             if not seg.heading and lvl is not None and lvl < 9:
                 seg.heading, seg.level = True, lvl
             seg.style_names = tuple(styles.names(ps)) if ps else ()
+            seg.style_id = ps
             seg.in_table = table_depth[0] > 0
             seg.quote = _quote_kind(ppr, ps, styles, seg.heading)
             stack.append(seg)
@@ -540,17 +615,27 @@ def _hidden_run(child):
 
 
 def xe_elements(entry_text: str, yomi: str, switch: str | None, bm_name: str | None, bm_id: int | None,
-                group: str | None = None, see: str | None = None):
+                group: str | None = None, see: str | None = None, see_italic: int = 0):
     """Bookmark (zero-length) + XE field runs.  `see` makes a cross-reference
     (\\t "See …") instead of a page reference."""
     out = []
     if bm_name:
         out.append(_el("bookmarkStart", {"id": bm_id, "name": bm_name}))
         out.append(_el("bookmarkEnd", {"id": bm_id}))
-    instr = (f' XE "{entry_text}" \\y "{yomi}"' + (f' \\f "{group}"' if group else "") +
-             (f' \\t "{see}"' if see else "") + (f" \\{switch}" if switch else "") + " ")
+    tail = (f" \\{switch}" if switch else "") + " "
+    head = f' XE "{entry_text}" \\y "{yomi}"' + (f' \\f "{group}"' if group else "")
     out.append(_hidden_run(_el("fldChar", {"fldCharType": "begin"})))
-    out.append(_hidden_run(_el("instrText", text=instr)))
+    if see and see_italic:
+        # "See" / "See also" in italics: Word carries the formatting of the XE text into the index
+        out.append(_hidden_run(_el("instrText", text=head + ' \\t "')))
+        r = _hidden_run(_el("instrText", text=see[:see_italic]))
+        rpr = _el("rPr")
+        rpr.append(_el("i"))
+        r.insert(0, rpr)
+        out.append(r)
+        out.append(_hidden_run(_el("instrText", text=see[see_italic:] + '"' + tail)))
+    else:
+        out.append(_hidden_run(_el("instrText", text=head + (f' \\t "{see}"' if see else "") + tail)))
     out.append(_hidden_run(_el("fldChar", {"fldCharType": "end"})))
     return out
 
@@ -630,7 +715,7 @@ def remove_xe_fields(pkg: DocxPackage) -> int:
     return removed
 
 
-def ensure_index_styles(pkg: DocxPackage, leader: str | None, cols: int):
+def ensure_index_styles(pkg: DocxPackage, leader: str | None, cols: int, font: str | None = None):
     """Make sure 'index 1'/'index 2' paragraph styles exist.  For right-aligned
     page numbers (`leader` = "dot" or "none") give 'index 2' a right tab at
     the column edge."""
@@ -674,6 +759,8 @@ def ensure_index_styles(pkg: DocxPackage, leader: str | None, cols: int):
                 s.append(rpr)
             pkg.styles.by_id[sid] = s
             pkg.styles.name_to_id[f"index {lvl}"] = sid
+        if font and not pkg.styles.own_font(sid):
+            _set_style_font(pkg.styles.by_id[sid], font)
         if leader:
             s = pkg.styles.by_id[sid]
             ppr = s.find(w("pPr"))
@@ -691,6 +778,25 @@ def ensure_index_styles(pkg: DocxPackage, leader: str | None, cols: int):
             tabs.append(_el("tab", {"val": "right", "leader": leader, "pos": max(colw - 10, 1440)}))
             # tabs must come early in pPr (after keepNext..., before spacing); insert first
             ppr.insert(0, tabs)
+
+
+def _set_style_font(style_el, font: str) -> None:
+    """Name a font in a style's run properties (rFonts goes first in rPr)."""
+    rpr = style_el.find(w("rPr"))
+    if rpr is None:
+        rpr = _el("rPr")
+        style_el.append(rpr)
+    old = rpr.find(w("rFonts"))
+    if old is not None:
+        rpr.remove(old)
+    rpr.insert(0, _el("rFonts", {"ascii": font, "hAnsi": font, "cs": font, "eastAsia": font}))
+
+
+def set_index_heading_font(pkg: DocxPackage, font: str) -> None:
+    """The "index heading" style (group letters), if the document has one without a font."""
+    sid = pkg.styles.id_for_name("index heading")
+    if sid and not pkg.styles.own_font(sid):
+        _set_style_font(pkg.styles.by_id[sid], font)
 
 
 def _heading_para(pkg, text, level, page_break=False):

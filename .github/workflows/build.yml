@@ -37,6 +37,7 @@ jobs:
         run: |
           python tests/test_parser.py
           python tests/test_terms.py
+          python tests/test_note_matching.py
           python tests/js_parity.py
           python tests/terms_parity.py
           python tests/word_mock_test.py

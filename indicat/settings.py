@@ -96,6 +96,16 @@ def migrate(data: dict) -> dict:
             extra = [w for w in GREEK_SKIP.split() if w not in have]
             if extra:
                 g["skip"] = (g["skip"].rstrip() + " " + " ".join(extra)).strip()
+        # names taken from file names lose "(CSV UTF-8)" and the like
+        from .terms import clean_set_name
+        for ts in data.get("term_sets") or []:
+            old = ts.get("name") or ""
+            new = clean_set_name(old)
+            if new != old:
+                ts["name"] = new
+                for key in ("title",):
+                    if ts.get(key) in (old, f"Index of {old}"):
+                        ts[key] = new if ts[key] == old else f"Index of {new}"
     data["_settings_version"] = SETTINGS_VERSION
     return data
 

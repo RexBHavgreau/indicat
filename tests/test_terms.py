@@ -201,6 +201,11 @@ def test_greek_skip_list_upgrade():
     new = S.migrate(old)
     sk = new["words"]["scripts"]["greek"]["skip"].split()
     assert sk[:3] == ["και", "δε", "μυ"] and "εγω" in sk and "ειμι" in sk and sk.count("και") == 1
+    old = {"_settings_version": 3, "term_sets": [{"name": "Subjects (CSV UTF-8)", "title": "Index of Subjects (CSV UTF-8)"},
+                                                 {"name": "Names", "title": "My Names"}]}
+    ts = S.migrate(old)["term_sets"]
+    assert ts[0]["name"] == "Subjects" and ts[0]["title"] == "Index of Subjects" and ts[1]["title"] == "My Names"
+    assert T.clean_set_name("Subjects (CSV, Windows)") == "Subjects"
 
 
 def test_settings_migration():

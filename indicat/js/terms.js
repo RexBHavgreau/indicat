@@ -172,6 +172,19 @@ function TermRef(index, heading, sub, sort, subSort, key, note) {
 TermRef.prototype.display = function () { return this.sub ? this.heading + ", " + this.sub : this.heading; };
 
 function tOpt(d, k) { return tHas(d.opts, k) ? d.opts[k] : TT.setDefaults[k]; }
+// "Mary; Dormition" or "Mary | Dormition" -> ["Dormition", "Mary"] (see terms.split_targets)
+function splitTargets(s) {
+    var parts = String(s || "").split(/[;|]/), out = [], seen = {}, i, t;
+    for (i = 0; i < parts.length; i++) {
+        t = parts[i].replace(/^\s+|\s+$/g, "");
+        if (t && !tHas(seen, t)) { seen[t] = 1; out.push(t); }
+    }
+    out.sort(function (a, b) {
+        var fa = foldStr(a), fb = foldStr(b);
+        return fa < fb ? -1 : fa > fb ? 1 : (a < b ? -1 : a > b ? 1 : 0);
+    });
+    return out;
+}
 function compileSet(d) {
     var cs = !tOpt(d, "case_sensitive"), marks = !!tOpt(d, "ignore_marks");
     var forms = [], xrefs = [], seen = {}, e, k, h, sub, ref, fl, f, ff, key;
@@ -182,9 +195,9 @@ function compileSet(d) {
         sub = String(e.sub || "").replace(/^\s+|\s+$/g, "");
         ref = new TermRef(d.id, h, sub, String(e.sort || "").replace(/^\s+|\s+$/g, ""),
             String(e.sub_sort || "").replace(/^\s+|\s+$/g, ""));
-        var see = String(e.see || "").replace(/^\s+|\s+$/g, ""), also = String(e.see_also || "").replace(/^\s+|\s+$/g, "");
-        if (see) { xrefs.push([ref, "see", see]); continue; }
-        if (also) xrefs.push([ref, "see_also", also]);
+        var see = splitTargets(e.see), also = splitTargets(e.see_also), q;
+        if (see.length) { for (q = 0; q < see.length; q++) xrefs.push([ref, "see", see[q]]); continue; }
+        for (q = 0; q < also.length; q++) xrefs.push([ref, "see_also", also[q]]);
         fl = [];
         for (f = 0; f < (e.forms || []).length; f++) if (e.forms[f] && String(e.forms[f]).replace(/\s+/g, "")) fl.push(e.forms[f]);
         if (!fl.length) fl = [sub || h];
