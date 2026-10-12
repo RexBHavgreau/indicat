@@ -511,7 +511,6 @@ class PdfBook:
                     want = _numval(note_cur.note_number) + 1 if note_cur is not None else None
                     if want is None or _numval(m.group(1)) in (want, 1):
                         num = m.group(1)
-                text = ln.text
                 cut = 0
                 if not ln.lead_sup and num:
                     cut = m.end()

@@ -28,6 +28,7 @@ echo Building ...
     --icon "indicat\assets\indicat.ico" ^
     --collect-data docx ^
     --add-data "indicat\js;indicat\js" ^
+    --add-data "indicat\data;indicat\data" ^
     --add-data "indicat\assets;indicat\assets" ^
     --hidden-import win32com.client ^
     --hidden-import pythoncom ^
