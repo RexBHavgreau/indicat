@@ -43,6 +43,7 @@ texts.forEach(function(t, si){
 var doc = { name: 'Test.indd', filePath: '/tmp', stories: new Coll(stories),
   indexes: { length: 0, add: function(){ this.length=1; this[0]=rootIndex; return rootIndex; } },
   characterStyles: { itemByName: function(){ return {isValid:false}; }, add: function(o){ return {name:o.name}; } },
+  indexGenerationOptions: {},
   conditions: { itemByName: function(){ return {isValid:false}; }, add: function(o){ return {name:o.name}; } } };
 global.app = { documents: {length:1}, activeDocument: doc, doScript: function(f){ f(); } };
 global.ScriptLanguage = {JAVASCRIPT:1}; global.UndoModes = {ENTIRE_SCRIPT:1};
@@ -73,3 +74,5 @@ var html = written['/tmp/Test - Index Proof List.html'] || '';
 console.log(html.split('\n').slice(4, 9).join('\n').slice(0, 1200));
 var notIdx = html.split('\n').filter(function(l){ return /not indexed/.test(l); });
 console.log('NOT INDEXED ROWS:\n' + notIdx.join('\n').slice(0, 1500));
+console.log('INDEX OPTIONS ' + JSON.stringify({sep: doc.indexGenerationOptions.beforeCrossReferenceSeparator,
+  style: doc.indexGenerationOptions.crossReferenceStyle ? doc.indexGenerationOptions.crossReferenceStyle.name : null}));

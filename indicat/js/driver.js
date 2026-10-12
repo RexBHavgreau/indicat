@@ -417,6 +417,27 @@ function run(doc, prefs) {
         }
     }
 
+    // Chicago style for cross-references: "favor. See grace", with See / See also in italics
+    var cmosNote = "";
+    if (xr) {
+        var setSep = false, setStyle = false;
+        try {
+            var gio = doc.indexGenerationOptions;
+            gio.beforeCrossReferenceSeparator = ". ";
+            setSep = true;
+            var cstyle = doc.characterStyles.itemByName("Index Cross-reference");
+            if (!cstyle.isValid) cstyle = doc.characterStyles.add({name: "Index Cross-reference"});
+            try { cstyle.fontStyle = "Italic"; } catch (e1) {}
+            gio.crossReferenceStyle = cstyle;
+            setStyle = true;
+        } catch (e) {}
+        if (!setSep || !setStyle)
+            cmosNote = "\nFor Chicago-style cross-references, in Generate Index > More Options set " +
+                (!setSep ? "Before Cross-reference to a period and a space" : "") +
+                (!setSep && !setStyle ? ", and " : "") +
+                (!setStyle ? "the Cross-reference style to an italic character style" : "") + ".";
+    }
+
     stage("reading page numbers");
     // pages
     for (k = 0; k < occs.length; k++) {
@@ -437,7 +458,7 @@ function run(doc, prefs) {
     for (var cn in counts) if (counts.hasOwnProperty(cn)) parts.push(cn + " " + counts[cn]);
     alert((defs.length ? "Index markers added: " : "Scripture index markers added: ") + placed +
         (defs.length && parts.length ? " (" + parts.join(", ") + ")" : "") +
-        (xr ? "\nCross-references added: " + xr : "") +
+        (xr ? "\nCross-references added: " + xr + cmosNote : "") +
         (failed ? "\n" + failed + " could not be placed (see the proofreading list)." : "") +
         "\n\nGenerate the index with Window > Type & Tables > Index > Generate Index." +
         (defs.length ? "\nEach word or term index is a top-level entry of the generated index (" +
