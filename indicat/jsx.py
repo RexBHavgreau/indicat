@@ -79,7 +79,11 @@ def terms_data(settings: dict) -> dict:
             lang_names[nm] = code
     return {
         "tables": T.js_tables(),
-        "words": {k: ws[k] for k in ("group_forms", "skip_block_quotes", "max_run", "list_item_max", "min_letters")},
+        "words": {k: ws[k] for k in ("group_forms", "skip_block_quotes", "max_run", "list_item_max", "min_letters",
+                                     "dictionary_forms", "forms_as_subentries")},
+        "elided": T.ELIDED,
+        "lexTables": {"decomp": T.DECOMP, "ccc": T.CCC,
+                      "cant": "".join(chr(c) for c in sorted(T.CANTILLATION)), "drop": "".join(sorted(T.LEX_DROP))},
         "setDefaults": dict(T.TERM_SET_OPTIONS),
         "indentProseWords": T.INDENT_PROSE_WORDS,
         "defs": [{"id": d.id, "kind": d.kind, "title": d.title, "short": d.short, "letter": d.letter,
@@ -89,9 +93,28 @@ def terms_data(settings: dict) -> dict:
     }
 
 
+def lex_data(settings: dict) -> dict:
+    """The dictionary-form tables for the scripts switched on, as compact strings."""
+    ws = T.words_settings(settings)
+    if not ws.get("dictionary_forms", True):
+        return {}
+    out = {}
+    lex = T.lexicon()
+    for d in T.index_defs(settings):
+        sc = d.opts.get("script") if d.kind == "script" else None
+        if sc in lex:
+            x = lex[sc]
+            out[sc] = {"lemmas": "\n".join(x["lemmas"]),
+                       "pointed": "\n".join(f"{k}\t{v}" for k, v in x["pointed"].items()),
+                       "plain": "\n".join(f"{k}\t{v}" for k, v in x["plain"].items())}
+    return out
+
+
 def parser_source(settings: dict) -> str:
     data = json.dumps(build_data(settings), ensure_ascii=True)
-    return ("var DATA = " + data + ";\n" + (_js_dir() / "parser.js").read_text(encoding="utf-8") + "\n" +
+    # the lexicon stays in UTF-8 (the script is saved with a byte-order mark): \u escapes would triple it
+    lexd = json.dumps(lex_data(settings), ensure_ascii=False)
+    return ("var DATA = " + data + ";\nvar LEXDATA = " + lexd + ";\n" + (_js_dir() / "parser.js").read_text(encoding="utf-8") + "\n" +
             (_js_dir() / "terms.js").read_text(encoding="utf-8"))
 
 

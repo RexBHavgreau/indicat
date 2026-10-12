@@ -6,7 +6,7 @@
 var PREF_FILE = File(Folder.userData + "/Indicat-InDesign.txt");
 var OLD_PREF_FILES = [File(Folder.userData + "/ScriptureIndexBuilder-InDesign.txt")];   // earlier versions
 var CREDIT = "Indicat, created by Beaux Hargrove";
-var TERM_LABELS = {word: "Word", term: "Term set match", quotation: "Quotation (not indexed)",
+var TERM_LABELS = {word: "Word", "word-check": "Word (check the dictionary form)", term: "Term set match", quotation: "Quotation (not indexed)",
     bibliography: "Bibliography (not indexed)"};
 var QUOTE_PT = 28.35;            // an indent this large (0.4 in / 1 cm) reads as a block quotation
 var COND_NAME = "Scripture Index: check book";
@@ -361,7 +361,7 @@ function run(doc, prefs) {
     var byPara = {}, order = [], o, counts = {};
     for (k = 0; k < occs.length; k++) {
         o = occs[k];
-        if (o.th) o.indexed = o.hit.status !== "bibliography" && (o.th.status === "word" || o.th.status === "term") && !!o.th.ref && !(o.note && prefs.notes === "skip");
+        if (o.th) o.indexed = o.hit.status !== "bibliography" && (o.th.status === "word" || o.th.status === "word-check" || o.th.status === "term") && !!o.th.ref && !(o.note && prefs.notes === "skip");
         else o.indexed = includeByDefault(o.hit.status) && !!o.hit.ref && !(o.note && prefs.notes === "skip");
         var pid = o.para.toSpecifier();
         if (!byPara[pid]) { byPara[pid] = []; order.push(pid); }

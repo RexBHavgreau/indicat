@@ -35,9 +35,17 @@ SENTENCES = [
     ("Covenant and covenants; the new covenant, the Davidic covenant. Justified by grace; GRACE alone; graces.", None, False, None),
     ("The Latin sola gratia and sola fide (soli Deo gloria) are mottos.", None, False, "latin"),
     ("ܡܠܬܐ and ܐܠܗܐ in Syriac; Λόγος vs λόγος vs ΛΟΓΟΣ.", None, False, None),
+    # 0.4.0: dictionary forms, pronouns, εἰμί, elision, unpointed Hebrew
+    ("λόγου and λόγοις; then κεχαριτωμένη; then ἐστιν, ἐγώ, σου, τίς; then κατ’ ἐμέ and καθ’ ἡμᾶς; δεῖ, ἔδει.", None, False, None),
+    ("וַיִּתְהַלֵּךְ and וְהָאָרֶץ and הִוא; the unpointed חסד, דבר, אמר; ἁρπάζω, ἀγάπης; λόγε, ἄρτοσχ.", None, False, None),
+    # the same words with their marks in different orders / precomposed or not
+    ("Mixed: \u05d1\u05bc\u05b0\u05e8\u05b5\u05d0\u05e9\u05c1\u05b4\u05d9\u05ea and "
+     "\u05d1\u05b0\u05bc\u05e8\u05b5\u05d0\u05e9\u05b4\u05c1\u05d9\u05ea; \u1f00\u03b3\u03ac\u03c0\u03b7 and "
+     "\u03b1\u0313\u03b3\u03b1\u0301\u03c0\u03b7 and \u1f00\u03b3\u1f71\u03c0\u03b7\u03c2.", None, False, None),
 ]
 
 SETTINGS = copy.deepcopy(DEFAULTS)
+SETTINGS_ALT = None   # set below: printed forms as subentries
 SETTINGS["words"] = {"scripts": {"greek": {"enabled": True}, "hebrew": {"enabled": True},
                                  "syriac": {"enabled": True}},
                      "tagged": [{"lang": "la", "enabled": True, "title": "Index of Latin Words",
@@ -80,15 +88,15 @@ chooseHeadings(refs);
 for (var a = 0; a < all.length; a++) {
   var h = all[a][1];
   var ws = []; for (var w2 = 0; w2 < h.words.length; w2++) ws.push([h.words[w2][0], h.words[w2][1], h.words[w2][2].heading, h.words[w2][2].sort]);
-  out.push([all[a][0], h.index, h.start, h.end, h.status, h.ref ? h.ref.heading : null, h.ref ? h.ref.sub : null,
+  out.push([all[a][0], h.index, h.start, h.end, h.status, h.reason, h.ref ? h.ref.heading : null, h.ref ? h.ref.sub : null,
             h.ref ? (h.ref.sort || sortCode(h.ref.heading)) : null, ws]);
 }
 process.stdout.write(JSON.stringify(out));
 """
 
 
-def python_out(segs):
-    eng = T.TermEngine(SETTINGS)
+def python_out(segs, settings):
+    eng = T.TermEngine(settings)
     allh, refs = [], []
     for i, s in enumerate(segs):
         meta = T.SegMeta(s["meta"]["quote"], s["meta"]["table"], s["meta"]["langs"])
@@ -101,16 +109,17 @@ def python_out(segs):
     T.choose_headings(refs)
     out = []
     for i, h in allh:
-        out.append([i, h.index, h.start, h.end, h.status, h.ref.heading if h.ref else None,
+        out.append([i, h.index, h.start, h.end, h.status, h.reason, h.ref.heading if h.ref else None,
                     h.ref.sub if h.ref else None, (h.ref.sort or T.sort_code(h.ref.heading)) if h.ref else None,
                     [[a, b, r.heading, r.sort] for a, b, r in h.words]])
     return out
 
 
-def node_out(segs):
+def node_out(segs, settings):
     with tempfile.TemporaryDirectory() as d:
         src = Path(d, "t.js")
-        src.write_text("var DATA = " + json.dumps(jsx.build_data(SETTINGS)) + ";\n" +
+        src.write_text("var DATA = " + json.dumps(jsx.build_data(settings)) + ";\nvar LEXDATA = " +
+                       json.dumps(jsx.lex_data(settings), ensure_ascii=False) + ";\n" +
                        (jsx._js_dir() / "terms.js").read_text(encoding="utf-8") + NODE_MAIN, encoding="utf-8")
         inp = Path(d, "in.json")
         inp.write_text(json.dumps(segs, ensure_ascii=False), encoding="utf-8")
@@ -144,8 +153,9 @@ def segs_from_docx(path):
     return out
 
 
-def compare(name, segs):
-    a, b = python_out(segs), node_out(segs)
+def compare(name, segs, settings=None):
+    settings = settings or SETTINGS
+    a, b = python_out(segs, settings), node_out(segs, settings)
     if a == b:
         print(f"OK   {name}: {len(a)} hits identical")
         return True
@@ -160,6 +170,11 @@ def compare(name, segs):
 
 def main():
     ok = compare("sentences", segs_from_sentences())
+    alt = copy.deepcopy(SETTINGS)
+    alt["words"]["forms_as_subentries"] = True
+    ok &= compare("sentences, printed forms as subentries", segs_from_sentences(), alt)
+    alt["words"]["dictionary_forms"] = False
+    ok &= compare("sentences, no dictionary forms", segs_from_sentences(), alt)
     for p in sys.argv[1:]:
         ok &= compare(Path(p).name, segs_from_docx(p))
     sys.exit(0 if ok else 1)

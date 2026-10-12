@@ -19,7 +19,7 @@ from .catalog import DEFAULT_SECTION_ORDER, build_catalog
 from .lang import get_language
 from .profiles import PROFILES
 
-SETTINGS_VERSION = 3          # bump when the layout of the file changes; see migrate()
+SETTINGS_VERSION = 4          # bump when the layout of the file changes; see migrate()
 
 DEFAULTS = {
     "language": "en",
@@ -87,6 +87,15 @@ def migrate(data: dict) -> dict:
     if ver < 3:
         # 0.2: no word or term indexes yet; nothing to convert
         pass
+    if ver < 4:
+        # 0.4: the Greek skip list gained pronouns, τίς, εἰμί and elided forms; add them to a saved list
+        from .terms import GREEK_SKIP
+        g = (data.get("words") or {}).get("scripts", {}).get("greek")
+        if isinstance(g, dict) and isinstance(g.get("skip"), str):
+            have = set(g["skip"].split())
+            extra = [w for w in GREEK_SKIP.split() if w not in have]
+            if extra:
+                g["skip"] = (g["skip"].rstrip() + " " + " ".join(extra)).strip()
     data["_settings_version"] = SETTINGS_VERSION
     return data
 

@@ -49,10 +49,11 @@ def check_custom_separator(text: str) -> str | None:
     return None
 
 
-TERM_LABELS = {"word": "Word", "term": "Term set match", "quotation": "Quotation (not indexed)",
+TERM_LABELS = {"word": "Word", "word-check": "Word (check the dictionary form)", "term": "Term set match",
+               "quotation": "Quotation (not indexed)",
                "bibliography": "Bibliography (not indexed)"}
 # statuses whose reason is shown next to the label in the review list
-SHOW_REASON = {"quotation", "unknown-book", "check-name", "f-end"}
+SHOW_REASON = {"quotation", "unknown-book", "check-name", "f-end", "word-check"}
 
 
 def include_by_default(status: str, settings: dict) -> bool:
@@ -62,7 +63,7 @@ def include_by_default(status: str, settings: dict) -> bool:
     if status == "mt":
         return settings.get("mt_mode", "label") != "exclude"
     return status in INDEXED_STATUSES
-TERM_INDEXED = {"word", "term"}
+TERM_INDEXED = {"word", "word-check", "term"}
 
 
 @dataclass
@@ -369,8 +370,9 @@ def _expand_quotations(occs: list[Occurrence]) -> list[Occurrence]:
     for o in occs:
         if o.status == "quotation" and o.include and o.words:
             for k, (s, e, r) in enumerate(o.words):
-                hit = Hit(s, e, None, "word", "from an included quotation", raw="")
-                out.append(Occurrence(f"{o.uid}#{k}", o.seq, o.part, o.seg_idx, s, e, hit, r, "word", True,
+                st = "word-check" if r.note else "word"
+                hit = Hit(s, e, None, st, r.note or "from an included quotation", raw="")
+                out.append(Occurrence(f"{o.uid}#{k}", o.seq, o.part, o.seg_idx, s, e, hit, r, st, True,
                                       o.context, o.note_kind, o.note_ordinal, edited=True,
                                       index=o.index))
         else:

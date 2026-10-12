@@ -47,7 +47,7 @@ s["term_sets"] = [{"id": "set1", "name": "Subjects", "enabled": True, "title": "
 # the Quote-style and indented paragraphs are block quotations, and the Greek of John 1:1
 # is an inline quotation: none of their words are indexed
 run(s, ["Index markers added: 20 (", "Scripture 13", "Greek 2", "Hebrew 2", "Subjects 3", "Cross-references added: 1",
-        "Index of Hebrew and Aramaic Words [9900]", "Index of Greek Words [9901]", "λόγος [2024122427] x1",
+        "Index of Hebrew and Aramaic Words [9900]", "Index of Greek Words [9901]", "λόγος [2024122427] x2",
         "Subject Index [9902]", "Davidic [davidic] x1", '[["covenant","see"]]', "<th>Index</th>"])
 print("OK   InDesign script (Scripture, Greek, Hebrew, term set) ran against the mock document")
 
