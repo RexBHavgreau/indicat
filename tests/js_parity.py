@@ -29,7 +29,16 @@ SENTENCES = {
            "Gn 1:1 and Jo 3:16 and Is 5 and Is 53:5 and Ps. 23 and 1 Chron. 16:1, 37–40) and Song of Sol. 7:11–8:7",
            "(Brill, 2000), 1:279. HALOT, 1:43–44. Peter said (3:16).", "Jude 5, Sir 24:3, Tob 1:1, Deuteronomy 1–21:9",
            "Starting in Ephesians 5. Starting in verse 21, he says (v. 23) and vv. 1–3. At 10:30 a.m.",
-           "Gen 1:28 and 2 Kings 5:1; Prov 5:18, 19, and 2 Cor 3:1."],
+           "Gen 1:28 and 2 Kings 5:1; Prov 5:18, 19, and 2 Cor 3:1.",
+           # 0.4.0
+           "In Genesis 3:15 the promise. Later Ex. 24:16; 40:34–35. See Geneses 3:15 (a typo).",
+           "Tob 5:15, 6:8; 1 Mac 12:11; 2 Mac 1:18; Letter J 5; WS 2:24 (3 Kings 8:10–11) the Apocalypse (12:1)",
+           "In Luke 24 the verb recurs. Matthew uses it (16:21; 17:10), Mark uses it (8:31), "
+           "and John uses it (3:7, 14). As we read in Mark (3:34).",
+           "In Luke 1 the angel comes. Zechariah responds with doubt (1:20), Mary with belief (1:38).",
+           "Col 2:16–7, Dan 2:28–9. Exod 40:34f, Exod 40:34f., Rev 2:18ff., Exod 40:38f",
+           "Joel 1:118 and Zechariah 1:62 and Isaiah 67:7. 1 Kings 1–11 narrates. In verse 23 it is repeated.",
+           "Mal 3:23 [4:5]; Ps 51:1 (Eng.) is 51:3 in the MT; Joel 3:1 [2:28]."],
     "es": ["Como dice Juan 3:16 y Gn 1:1; 2:3. Primera de Corintios 13:4 y 1 Co 13:7, Ap 21:4.",
            "En Romanos (8:28) y Sal 23:1-3. Hch 2:38. Genesis 1:1 y vv. 4-5."],
     "pt": ["João 3:16 e Jo 3:16; Jn 1:2 (Jonas). 1Co 13:4, Gn 1:1-3."],
@@ -48,7 +57,7 @@ var input = J.parse(fs.readFileSync(process.argv[2], 'utf8'));
 delete String.prototype.trim; delete Object.keys;
 var out = [];
 var sc = new Scanner(15);
-function put(h, seg){ out.push([seg, h.start, h.end, h.status, h.ref ? refDisplay(h.ref) : null]); }
+function put(h, seg){ out.push([seg, h.start, h.end, h.status, h.ref ? refDisplay(h.ref) : null, h.reason, h.ref ? refSortKey(h.ref) : null]); }
 for (var i = 0; i < input.length; i++) {
   var s = input[i];
   if (s.heading) sc.heading();
@@ -77,7 +86,8 @@ def python_hits(settings, segs):
     out = []
 
     def put(h, sid):
-        out.append([sid, h.start, h.end, h.status, h.ref.display() if h.ref else None])
+        out.append([sid, h.start, h.end, h.status, h.ref.display() if h.ref else None, h.reason,
+                    h.ref.sort_key() if h.ref else None])
     for s in segs:
         if s["heading"]:
             sc.heading()
@@ -147,6 +157,25 @@ def main(paths):
         segs = [{"id": f"s{i}", "idx": i, "text": t, "italic": [False] * len(t), "heading": False, "notes": []}
                 for i, t in enumerate(sents)]
         ok &= compare(f"sentences [{code}]", s, segs)
+    # italics: titles after an author's name, citations after an italic title
+    t = "Pace, “Dulia,” The Catholic Encyclopedia, 5:188; Gruenthaner, Mariology, 1:118; Bock, Luke 1:1–9:50."
+    it = [False] * len(t)
+    for w in ("The Catholic Encyclopedia", "Mariology", "Luke 1:1–9:50"):
+        i = t.index(w)
+        it[i:i + len(w)] = [True] * len(w)
+    s = copy.deepcopy(DEFAULTS)
+    for ap in (False, True):
+        s["apocrypha"] = ap
+        ok &= compare(f"italics + Apocrypha {ap}", s, [{"id": "i", "idx": 0, "text": t, "italic": it,
+                                                         "heading": False, "notes": []},
+                                                        {"id": "a", "idx": 1, "text": SENTENCES["en"][10],
+                                                         "italic": [False] * len(SENTENCES["en"][10]),
+                                                         "heading": False, "notes": []}])
+    off = copy.deepcopy(DEFAULTS)
+    off["languages"] = {"en": {"disabled_sets": ["CMOS shorter"]}}
+    ok &= compare("CMOS shorter off", off, [{"id": "x", "idx": 0, "text": SENTENCES["en"][9],
+                                             "italic": [False] * len(SENTENCES["en"][9]), "heading": False,
+                                             "notes": []}])
     for p in paths:
         s = copy.deepcopy(DEFAULTS)
         ok &= compare(Path(p).name[:60], s, segs_from_docx(p))
