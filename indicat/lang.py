@@ -1,6 +1,7 @@
 """Compile a language profile + user settings into the matcher the parser uses."""
 from __future__ import annotations
 
+import difflib
 import re
 import unicodedata
 
@@ -12,7 +13,7 @@ GERESH = "׳"        # ׳
 GERSHAYIM = "״"     # ״
 GERESH_CLASS = "[׳'’]"
 GERSHAYIM_CLASS = "[״\"”]"
-ROMAN = {"1": "I", "2": "II", "3": "III"}
+ROMAN = {"1": "I", "2": "II", "3": "III", "4": "IV"}
 
 
 def strip_accents(s: str) -> str:
@@ -24,7 +25,7 @@ def norm_spelling(s: str) -> str:
     s = re.sub(SP + "+", " ", s.strip())
     s = s.replace("'", GERESH).replace("’", GERESH)
     s = s.replace('"', GERSHAYIM).replace("”", GERSHAYIM)
-    s = re.sub(r"^([123])\.?\s*(?=\D)", r"\1 ", s)          # 1Sam / 1. Sam / 1 Sam
+    s = re.sub(r"^([1-4])\.?\s*(?=\D)", r"\1 ", s)          # 1Sam / 1. Sam / 1 Sam
     if s.endswith(".") and not s.endswith(".."):
         s = s[:-1]
     return s
@@ -46,6 +47,7 @@ class Language:
         overrides = lset.get("books", {})
         # key -> (book_id, kind, short, bare_ok)
         self.spellings: dict[str, tuple] = {}
+        self.flags: dict[str, str] = {}           # spelling -> why it must be checked
         self.conflicts: list[str] = []
         bare_ok = set(profile.get("bare_ok", []))
         risky = set(profile.get("risky_abbr", []))
@@ -70,7 +72,7 @@ class Language:
 
         def add_variants(spelling: str, bid: str, kind: str):
             add(spelling, bid, kind)
-            m = re.match(r"^([123]) (.+)$", spelling)
+            m = re.match(r"^([1-4]) (.+)$", spelling)
             if m:
                 n, rest = m.groups()
                 if profile.get("roman"):
@@ -100,6 +102,11 @@ class Language:
                 for s in abbrs:
                     if norm_spelling(s) not in removed.get(bid, ()):
                         add_variants(s, bid, "abbr")
+        for bid, items in profile.get("flagged", {}).items():
+            for spelling, why in items:
+                if bid in catalog.books and norm_spelling(spelling) not in self.spellings:
+                    add(spelling, bid, "abbr")
+                    self.flags[norm_spelling(spelling)] = why
         for bid, o in overrides.items():
             for s in o.get("add", []):
                 add_variants(s, bid, "abbr" if core_len(s) < 5 else "full")
@@ -116,11 +123,18 @@ class Language:
             if norm_spelling(plain) not in self.spellings:
                 add(plain, bid, kind)
         self.book_re = self._build_regex()
+        # spellings in abbreviation sets that are switched off, for suggestions
+        self.disabled_spellings: dict[str, tuple[str, str]] = {}
+        for set_name, table in profile.get("sets", {}).items():
+            if set_name in disabled:
+                for bid, abbrs in table.items():
+                    for s in abbrs:
+                        self.disabled_spellings.setdefault(norm_spelling(s), (bid, set_name))
 
     # -- regex ------------------------------------------------------------------
     def _pattern_for(self, key: str) -> str:
         out = []
-        m = re.match(r"^([123]) (.+)$", key)
+        m = re.match(r"^([1-4]) (.+)$", key)
         if m:
             out.append(m.group(1))
             out.append(r"\.?" + SP + "*" if self.p.get("dot_after_number") else SP + "?")
@@ -146,6 +160,21 @@ class Language:
 
     def resolve(self, text: str):
         return self.spellings.get(norm_spelling(text))
+
+    def suggest(self, text: str) -> str:
+        """For a word that isn't a known book name: "Exodus? (from CMOS shorter, switched off)",
+        "Genesis?", or ""."""
+        key = norm_spelling(text)
+        hit = self.disabled_spellings.get(key)
+        if hit and hit[0] in self.cat.books:
+            return f"{self.cat.name(hit[0])}? (from {hit[1]}, switched off)"
+        close = difflib.get_close_matches(key, list(self.spellings), n=1, cutoff=0.8)
+        if close and core_len(close[0]) >= 4:
+            return f"{self.cat.name(self.spellings[close[0]][0])}?"
+        return ""
+
+    def flag(self, text: str) -> str:
+        return self.flags.get(norm_spelling(text), "")
 
     def candidates_at(self, text: str, pos: int):
         """All spellings that match at `pos` (longest first) -- used to back off

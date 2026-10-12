@@ -15,6 +15,7 @@ from docx.shared import Pt, Inches
 
 from . import __version__
 from .parser import INDEXED_STATUSES
+from .pipeline import SHOW_REASON
 
 ROMAN = {"i": 1, "v": 5, "x": 10, "l": 50, "c": 100, "d": 500, "m": 1000}
 
@@ -34,6 +35,8 @@ def roman_value(s: str) -> int | None:
 
 
 def page_sort_key(o) -> tuple:
+    if getattr(o, "pdf_page", None) is not None:
+        return (0, o.pdf_page, o.seq)
     if not o.page:
         return (2, 0, o.seq)
     rv = roman_value(o.page)
@@ -83,7 +86,12 @@ def _context_runs(par, context: str, size=8.5):
         r.font.size = Pt(size)
 
 
-def write_proof(path: Path, csv_path: Path, src: Path, occs, opts, used_word: bool, messages, res=None):
+# rows worth a second look (highlighted)
+CHECK_STATUSES = {"inferred", "inferred-weak", "check-name", "mt", "word-check"}
+
+
+def write_proof(path: Path, csv_path: Path, src: Path, occs, opts, used_word: bool, messages, res=None,
+                page_source: str | None = None):
     indexed = [o for o in occs if o.include and o.ref is not None
                and not (o.in_note and opts.footnote_mode == "skip")]
     multi = bool(res is not None and res.defs)
@@ -115,9 +123,10 @@ def write_proof(path: Path, csv_path: Path, src: Path, occs, opts, used_word: bo
     from .pipeline import FOOTNOTE_MODES
     p.add_run(FOOTNOTE_MODES.get(opts.footnote_mode, opts.footnote_mode))
     p.add_run("\nPage numbers: ").bold = True
-    p.add_run("read from Word's layout of the indexed copy on this computer. If fonts, printer, or "
+    p.add_run(page_source or (
+              "read from Word's layout of the indexed copy on this computer. If fonts, printer, or "
               "text change, rebuild before final proofing." if used_word else
-              "not available (Word automation was not used). Entries are listed in reading order.")
+              "not available (Word automation was not used). Entries are listed in reading order."))
     for m in messages:
         q = doc.add_paragraph(style="List Bullet")
         q.add_run(m).italic = True
@@ -160,7 +169,7 @@ def write_proof(path: Path, csv_path: Path, src: Path, occs, opts, used_word: bo
             cell.text = ""
             run = cell.paragraphs[0].add_run(v)
             run.font.size = Pt(9)
-            if i == how_i and (o.status in ("inferred", "inferred-weak") or o.edited):
+            if i == how_i and (o.status in CHECK_STATUSES or o.edited or o.open_ended):
                 run.font.highlight_color = WD_COLOR_INDEX.YELLOW
             if i == where_i and o.in_note:
                 run.bold = True
@@ -197,7 +206,7 @@ def write_proof(path: Path, csv_path: Path, src: Path, occs, opts, used_word: bo
             reason = "Excluded by you"
         elif o.in_note and opts.footnote_mode == "skip":
             reason = "In a note (notes skipped)"
-        if o.hit.reason and o.status != "quotation":
+        if o.hit.reason and o.status not in SHOW_REASON:
             reason += f" ({o.hit.reason})"
         vals = [str(o.seq + 1), o.display, o.where, reason]
         if multi:
@@ -212,9 +221,10 @@ def write_proof(path: Path, csv_path: Path, src: Path, occs, opts, used_word: bo
     with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
         wr = csv.writer(f)
         wr.writerow(["indexed", "page", "index", "book_or_heading", "entry_or_subentry", "where", "status",
-                     "reading_order", "context"])
+                     "note", "reading_order", "context"])
         for o in indexed + review:
+            note = o.merged_warning or ("" if o.status in SHOW_REASON else o.hit.reason)
             wr.writerow(["yes" if o in indexed else "no", o.page or "", iname(o),
                          o.ref.book_name if o.ref else "", o.ref.label() if o.ref else o.hit.raw,
-                         o.where, o.status_label, o.seq + 1,
+                         o.where, o.status_label, note, o.seq + 1,
                          o.context.replace("⟦", "[").replace("⟧", "]")])

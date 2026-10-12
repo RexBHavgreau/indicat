@@ -4,6 +4,7 @@
     python -m indicat build "Manuscript.docx" [--out DIR] [--notes italic|bold|highlight|auto|skip]
     python -m indicat static "Book - Indexed.docx" [--mode auto|highlight]
     python -m indicat build "Book.docx" --words greek,hebrew --terms "Subjects.csv"
+    python -m indicat build "Book.pdf" [--format docx|odt]      (a finished index from a PDF)
 """
 from __future__ import annotations
 
@@ -35,6 +36,7 @@ def main(argv=None):
     b.add_argument("--custom-sep", help="custom separation text (up to 5 characters), e.g. ' -- '")
     b.add_argument("--remove-existing", action="store_true")
     b.add_argument("--no-word", action="store_true")
+    b.add_argument("--format", choices=["docx", "odt"], default="docx", help="index file for a PDF")
     st = sub.add_parser("static", help="make a '(static index)' copy of a checked, indexed document")
     st.add_argument("docx")
     st.add_argument("--out")
@@ -49,6 +51,9 @@ def main(argv=None):
         sp.add_argument("--apocrypha", action="store_true", help="recognize the Apocrypha")
         sp.add_argument("--layout", choices=["single", "testaments", "sections"], help="index layout")
         sp.add_argument("--settings", help="settings file exported from the app")
+        sp.add_argument("--whole-chapters", action="store_true", help="index references to whole chapters")
+        sp.add_argument("--bibliography", action="store_true", help="index the bibliography")
+        sp.add_argument("--mt", choices=["label", "exclude"], help="verses in Hebrew numbering: [MT] or left out")
     j = sub.add_parser("jsx", help="write the InDesign script for the current settings")
     j.add_argument("out")
     j.add_argument("--lang", choices=["en", "es", "pt", "fr", "de", "he"])
@@ -67,6 +72,12 @@ def main(argv=None):
         cfg["index_layout"] = a.layout
     if getattr(a, "no_scripture", False):
         cfg["scripture"] = False
+    if getattr(a, "whole_chapters", False):
+        cfg["whole_chapters"] = True
+    if getattr(a, "bibliography", False):
+        cfg["index_bibliography"] = True
+    if getattr(a, "mt", None):
+        cfg["mt_mode"] = a.mt
     if getattr(a, "words", None) is not None:
         from . import terms as T
         ws = T.words_settings(cfg)
@@ -82,7 +93,7 @@ def main(argv=None):
         entries, probs = T.read_term_file(tf)
         for pmsg in probs:
             print("TERMS:", pmsg)
-        name = Path(tf).stem
+        name = T.clean_set_name(Path(tf).stem)
         cfg.setdefault("term_sets", []).append({"id": T.new_set_id(cfg.get("term_sets", [])), "name": name,
                                                 "title": name, "enabled": True, "entries": entries})
     if a.cmd == "jsx":
@@ -97,7 +108,12 @@ def main(argv=None):
         print("Static copy:", out)
         return 0
 
-    res, _ = scan(a.docx, cfg)
+    pdf = Path(a.docx).suffix.lower() == ".pdf"
+    if pdf:
+        from .pdf_index import scan_pdf
+        res = scan_pdf(a.docx, cfg)
+    else:
+        res, _ = scan(a.docx, cfg)
     for wmsg in res.warnings:
         print("WARNING:", wmsg)
     if a.cmd == "scan":
@@ -124,10 +140,14 @@ def main(argv=None):
     opts = BuildOptions(out_dir=out, columns=a.columns, separator=sep_text, leader=leader,
                         footnote_mode=a.notes, remove_existing_xe=a.remove_existing,
                         use_word=not a.no_word, settings=cfg)
-    r = build(res, opts)
+    if pdf:
+        from .pdf_index import build_pdf
+        r = build_pdf(res, opts, a.format)
+    else:
+        r = build(res, opts)
     for m in r.messages:
         print("NOTE:", m)
-    print("Indexed copy:", r.indexed_docx)
+    print("Index:" if pdf else "Indexed copy:", r.indexed_docx)
     if r.final_docx:
         print("Final copy:  ", r.final_docx)
     print("Proof list:  ", r.proof_docx)

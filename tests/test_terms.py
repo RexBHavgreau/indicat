@@ -25,7 +25,8 @@ def scan(text, settings=None, meta=None):
 
 
 def found(hits, status="word"):
-    return [h.ref.heading if h.ref else None for h in hits if h.status == status]
+    return [h.ref.heading if h.ref else None for h in hits
+            if h.status == status or (status == "word" and h.status == "word-check")]
 
 
 def test_lists_are_kept():
@@ -37,12 +38,12 @@ def test_quotations_are_skipped():
     h = scan("John writes Ἐν ἀρχῇ ἦν ὁ λόγος, καὶ ὁ λόγος ἦν πρὸς τὸν θεόν here.")
     assert found(h) == [] and len(found(h, "quotation")) == 1, h
     q = [x for x in h if x.status == "quotation"][0]
-    assert "12-word" in q.reason and len(q.words) == 6      # stop words are not counted as entries
+    assert "12-word" in q.reason and len(q.words) == 4      # stop words (ἐν, ἦν, ὁ, καί…) are not entries
 
 
 def test_short_runs_are_words():
     h = scan("the phrase ἐν ἀρχῇ ἦν and λόγος")
-    assert found(h) == ["ἀρχῇ", "ἦν", "λόγος"], found(h)         # ἐν is a skipped word
+    assert found(h) == ["ἀρχή", "λόγος"], found(h)         # ἐν and ἦν (εἰμί) are skipped words
 
 
 def test_run_limit_setting():
@@ -65,14 +66,16 @@ def test_block_quotes():
 
 def test_hebrew_maqaf_points_and_grouping():
     h = scan("חֶסֶד and חסד in כָּל־הָאָרֶץ")
-    refs = [x.ref for x in h if x.status == "word"]
+    refs = [x.ref for x in h if x.status.startswith("word")]
     T.choose_headings(refs)
-    assert [r.heading for r in refs] == ["חֶסֶד", "חֶסֶד", "הָאָרֶץ"], [r.heading for r in refs]
+    assert [r.heading for r in refs] == ["חֶסֶד", "חֶסֶד", "אֶרֶץ"], [r.heading for r in refs]
+    assert [x.status for x in h] == ["word", "word-check", "word"]       # unpointed חסד could be חָסַד
 
 
 def test_grouping_off_keeps_forms_apart():
     s = copy.deepcopy(WORDS_ON)
     s["words"]["group_forms"] = False
+    s["words"]["dictionary_forms"] = False
     refs = [x.ref for x in scan("λόγος and λογος", s) if x.status == "word"]
     T.choose_headings(refs)
     assert [r.heading for r in refs] == ["λόγος", "λογος"]
@@ -91,7 +94,20 @@ def test_elision_and_syriac():
     s = copy.deepcopy(WORDS_ON)
     s["words"]["scripts"]["syriac"] = {"enabled": True}
     h = scan("δι’ αὐτοῦ ἐγένετο; and ܡܠܬܐ", s)
-    assert found(h) == ["δι’", "ἐγένετο", "ܡܠܬܐ"], found(h)
+    assert found(h) == ["γίνομαι", "ܡܠܬܐ"], found(h)        # δι’ is διά, a skipped word
+
+
+def test_dictionary_forms():
+    h = scan("λόγος, λόγου, and τοῖς λόγοις; then κεχαριτωμένη; then ἐστιν, ἐγώ, σου, τίς; then κατ’ ἐμέ")
+    assert found(h) == ["λόγος", "λόγος", "λόγος", "χαριτόω"], found(h)
+    h = scan("וַיִּתְהַלֵּךְ and וְהָאָרֶץ and הִוא")
+    assert found(h) == ["הָלַךְ", "אֶרֶץ"], found(h)                     # הוּא is a skipped word
+    s = copy.deepcopy(WORDS_ON)
+    s["words"]["forms_as_subentries"] = True
+    assert [x.ref.display() for x in scan("λόγου and λόγοις", s)] == ["λόγος, λόγου", "λόγος, λόγοις"]
+    s["words"]["dictionary_forms"] = False
+    assert found(scan("λόγου and λόγοις", s)) == ["λόγου", "λόγοις"]
+    assert found(scan("ἄρτοσχ and λόγε")) == ["ἄρτοσχ", "λόγε"]          # not in the lexicon: as written
 
 
 def test_tagged_language():
@@ -177,6 +193,19 @@ def test_read_files():
         n.write_text("grace,,grace | gracious\n,missing heading\n", encoding="cp1252")
         e, probs = T.read_term_file(n)
         assert e[0]["forms"] == ["grace", "gracious"] and len(probs) == 1
+
+
+def test_greek_skip_list_upgrade():
+    from indicat import settings as S
+    old = {"_settings_version": 3, "words": {"scripts": {"greek": {"enabled": True, "skip": "και δε μυ"}}}}
+    new = S.migrate(old)
+    sk = new["words"]["scripts"]["greek"]["skip"].split()
+    assert sk[:3] == ["και", "δε", "μυ"] and "εγω" in sk and "ειμι" in sk and sk.count("και") == 1
+    old = {"_settings_version": 3, "term_sets": [{"name": "Subjects (CSV UTF-8)", "title": "Index of Subjects (CSV UTF-8)"},
+                                                 {"name": "Names", "title": "My Names"}]}
+    ts = S.migrate(old)["term_sets"]
+    assert ts[0]["name"] == "Subjects" and ts[0]["title"] == "Index of Subjects" and ts[1]["title"] == "My Names"
+    assert T.clean_set_name("Subjects (CSV, Windows)") == "Subjects"
 
 
 def test_settings_migration():

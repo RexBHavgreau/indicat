@@ -5,7 +5,7 @@ function Coll(items){ this.items = items; this.length = items.length; for (var i
 Coll.prototype.everyItem = function(){ var self=this; return { getElements: function(){ return self.items.slice(0); },
   cells: { everyItem: function(){ return { getElements: function(){ return []; } }; } } }; };
 function Para(story, text, index, italicRanges){ this.story=story; this.contents=text; this.index=index;
-  this.appliedParagraphStyle={name: /^Chapter/.test(text) ? 'Heading 1' : (/^Quote:/.test(text) ? 'Block Quote' : 'Body')};
+  this.appliedParagraphStyle={name: /^(Chapter|Bibliography)/.test(text) ? 'Heading 1' : (/^Quote:/.test(text) ? 'Block Quote' : 'Body')};
   this.leftIndent = /^Indented:/.test(text) ? 36 : 0; this.firstLineIndent = 0;
   var self=this;
   this.textStyleRanges = new Coll((italicRanges||[[0,text.length,false]]).map(function(r){ return {fontStyle: r[2]?'Italic':'Regular', characters:{length:r[1]-r[0]}}; }));
@@ -43,6 +43,7 @@ texts.forEach(function(t, si){
 var doc = { name: 'Test.indd', filePath: '/tmp', stories: new Coll(stories),
   indexes: { length: 0, add: function(){ this.length=1; this[0]=rootIndex; return rootIndex; } },
   characterStyles: { itemByName: function(){ return {isValid:false}; }, add: function(o){ return {name:o.name}; } },
+  indexGenerationOptions: {},
   conditions: { itemByName: function(){ return {isValid:false}; }, add: function(o){ return {name:o.name}; } } };
 global.app = { documents: {length:1}, activeDocument: doc, doScript: function(f){ f(); } };
 global.ScriptLanguage = {JAVASCRIPT:1}; global.UndoModes = {ENTIRE_SCRIPT:1};
@@ -62,9 +63,16 @@ global.Window = function(){ var w = { alignChildren:'', add: function(type, b, i
    if (type==='checkbox') return {value:true};
    if (type==='panel') { return { add: function(t2){ if (t2==='dropdownlist') return { _s:{index:0}, get selection(){ return this._s; }, set selection(v){ this._s={index:(typeof v==='number'?v:v.index)}; } }; if (t2==='checkbox') return {value:true}; return {}; } }; }
    return c; }, show: function(){ return 1; } }; return w; };
+// ExtendScript quirk: splice() returns undefined when it removes nothing
+var _splice = Array.prototype.splice;
+Array.prototype.splice = function(){ var r = _splice.apply(this, arguments); return r.length ? r : undefined; };
 eval(fs.readFileSync(process.argv[2],'utf8').replace('#target indesign',''));
 function dump(t, d){ var o=''; for (var k in t.children){ var c=t.children[k]; o += Array(d+1).join('  ') + c.name + ' [' + c.sortOrder + ']' + (c.refs.length? ' x'+c.refs.length : '') + (c.xrefs.length ? ' ' + JSON.stringify(c.xrefs) : '') + '\n' + dump(c, d+1); } return o; }
 console.log(dump(rootIndex,0));
 for (var k in written) console.log('FILE', k, written[k].length, 'chars');
 var html = written['/tmp/Test - Index Proof List.html'] || '';
 console.log(html.split('\n').slice(4, 9).join('\n').slice(0, 1200));
+var notIdx = html.split('\n').filter(function(l){ return /not indexed/.test(l); });
+console.log('NOT INDEXED ROWS:\n' + notIdx.join('\n').slice(0, 1500));
+console.log('INDEX OPTIONS ' + JSON.stringify({sep: doc.indexGenerationOptions.beforeCrossReferenceSeparator,
+  style: doc.indexGenerationOptions.crossReferenceStyle ? doc.indexGenerationOptions.crossReferenceStyle.name : null}));

@@ -398,15 +398,30 @@ def _read_index(doc, fld, sep: str, marker: str | None, extra_books=()) -> list[
     return entries
 
 
+def _note_units(occs) -> list[list]:
+    """Group note references by note (the same entry twice in one note counts once), footnotes
+    first in document order, then endnotes in order (they print at the end)."""
+    units: dict = {}
+    order = []
+    for o in occs:
+        k = (o.note_kind, o.note_ordinal) if getattr(o, "note_ordinal", None) else ("?", id(o))
+        if k not in units:
+            units[k] = []
+            order.append(k)
+        units[k].append(o)
+    order.sort(key=lambda k: 1 if k[0] == "endnote" else 0)          # stable
+    return [units[k] for k in order]
+
+
 def match_note_locators(entries: list[dict], note_occs) -> tuple[dict, list]:
     """Pair each marked (note) page number in the index with the note
     reference(s) it stands for.
 
-    Notes come in document order, and so do page numbers, so when an entry has
-    as many marked page numbers as note references they pair one-to-one.  When
-    counts differ (two notes on one page, or a note on the same page as a body
-    reference) the computed page decides, and anything still uncertain is
-    returned in `unmatched`.
+    Notes come in page order (footnotes in document order, endnotes after them), and so do
+    page numbers, so when an entry has as many marked page numbers as notes they pair
+    one-to-one.  When counts differ (two notes on one page, a note on the same page as a body
+    reference, a long note citing the entry on two pages) the page each reference was printed
+    on decides, and anything still uncertain is returned in `unmatched`.
     """
     by_key: dict[tuple, list] = {}
     for o in note_occs:
@@ -417,12 +432,15 @@ def match_note_locators(entries: list[dict], note_occs) -> tuple[dict, list]:
         marked = [li for li, loc in enumerate(e["locs"]) if loc["marked"]]
         if not marked:
             continue
-        notes = list(by_key.get((e["book"], e["entry"]), []))
-        if len(marked) == len(notes):
-            for li, o in zip(marked, notes):
-                assign[(ei, li)] = [o]
+        occs = by_key.get((e["book"], e["entry"]), [])
+        units = _note_units(occs)
+        pages_ok = all(o.page for o in occs)
+        if len(marked) == len(units) and (not pages_ok or all(
+                any(o.page == e["locs"][li]["text"] for o in u) for li, u in zip(marked, units))):
+            for li, u in zip(marked, units):
+                assign[(ei, li)] = list(u)
             continue
-        remaining = list(notes)
+        remaining = list(occs)
         left = []
         for li in marked:
             page = e["locs"][li]["text"]
@@ -432,9 +450,10 @@ def match_note_locators(entries: list[dict], note_occs) -> tuple[dict, list]:
                 remaining = [o for o in remaining if o not in grp]
             else:
                 left.append(li)
-        if left and len(left) == len(remaining):
-            for li, o in zip(left, remaining):
-                assign[(ei, li)] = [o]
+        rest = _note_units(remaining)
+        if left and len(left) == len(rest):
+            for li, u in zip(left, rest):
+                assign[(ei, li)] = list(u)
             left = []
         for li in left:
             unmatched.append((ei, li))
@@ -479,8 +498,46 @@ def _finalize(doc, fld, entries, assign, unmatched, mode, marker: str | None = "
                     flagged.append(f"{e['book']} {e['entry']}, p. {loc['text']}")
                 else:
                     done += 1
+    try:
+        _cmos_crossrefs(doc, fld)
+    except Exception:
+        pass
     fld.Unlink()
     return done, list(reversed(flagged))
+
+
+def _see_words() -> list[str]:
+    from .terms import SEE_WORDS
+    words = {w for pair in SEE_WORDS.values() for w in pair}
+    return sorted(words, key=len, reverse=True)          # "See also" before "See"
+
+
+def cmos_crossref_edits(text: str, sep: str) -> list[tuple[int, int, int]]:
+    """Where to change "Our Lady, See Mary" / "Assumption, 9, See also Dormition" into Chicago
+    style ("Our Lady. See Mary", "Assumption, 9. See also Dormition"): a list of
+    (separator start, separator end, length of the See words), last first."""
+    seps = sorted({sep, ", ", "; ", "\t"}, key=len, reverse=True)
+    words = _see_words()
+    pat = re.compile("(" + "|".join(re.escape(x) for x in seps) + ")(" +
+                     "|".join(re.escape(w) for w in words) + r")(?=\s)")
+    out = []
+    for m in pat.finditer(text):
+        out.append((m.start(1), m.end(1), len(m.group(2))))
+    return list(reversed(out))
+
+
+def _cmos_crossrefs(doc, fld) -> None:
+    """Chicago-style cross-references in the index text: a period before See / See also, and
+    the See words in italics."""
+    sep = parse_separator(fld.Code.Text)
+    paras = fld.Result.Paragraphs
+    for i in range(paras.Count, 0, -1):
+        prng = paras.Item(i).Range
+        text = prng.Text
+        for a, b, n in cmos_crossref_edits(text, sep):
+            start = prng.Start
+            doc.Range(start + b, start + b + n).Font.Italic = True
+            doc.Range(start + a, start + b).Text = ". "
 
 
 # ---------------------------------------------------------------------------

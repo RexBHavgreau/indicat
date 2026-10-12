@@ -218,14 +218,30 @@ def js_tables() -> dict:
 # ---------------------------------------------------------------------------
 # Settings
 # ---------------------------------------------------------------------------
+GREEK_SKIP_03 = ("ο η το του της τω τη τον την οι αι τα των τοις ταις τους τας και δε τε γαρ ουν "
+                 "μεν αλλα αλλ ει εν εις εκ εξ επι προς δια κατα μετα απο υπο περι παρα οτι ινα "
+                 "ως ου ουκ ουχ μη αυτος αυτου αυτω αυτον αυτη αυτης αυτην αυτων αυτοις αυτους")
+GREEK_SKIP = (GREEK_SKIP_03 +
+              # personal pronouns
+              " εγω μου εμου μοι εμοι με εμε ημεις ημων ημιν ημας συ σου σοι σε υμεις υμων υμιν υμας"
+              # τίς / τί
+              " τις τι τινος τινι τινα τινες τινων τισι τισιν"
+              # εἰμί
+              " ειμι ει εστιν εστι εσμεν εστε εισιν εισι ην ημην ησθα ημεν ητε ησαν εσομαι εση εσται"
+              " εσομεθα εσεσθε εσονται ειναι ων ουσα ον οντος ουσης οντι ουση οντα ουσαν οντες ουσαι"
+              " οντων ουσων ουσι ουσιν ουσας ω ης ωμεν ητε ωσιν ωσι ειη ισθι εστω εστωσαν"
+              # elided prepositions and particles (also matched through ELIDED)
+              " δι κατ καθ μετ μεθ απ αφ επ εφ υπ υφ παρ")
+# elided forms -> the full word (folded), so δι’ is treated like διά
+ELIDED = {"δι": "δια", "αλλ": "αλλα", "κατ": "κατα", "καθ": "κατα", "μετ": "μετα", "μεθ": "μετα",
+          "απ": "απο", "αφ": "απο", "επ": "επι", "εφ": "επι", "υπ": "υπο", "υφ": "υπο", "παρ": "παρα"}
+
 SCRIPT_INDEXES = {
     "hebrew": {"label": "Hebrew and Aramaic words", "title": "Index of Hebrew and Aramaic Words",
                "letter": "H", "short": "Hebrew",
                "skip": "את אשר כי על אל לא כל גם אם מן עם הוא היא הם הן זה זאת"},
     "greek": {"label": "Greek words", "title": "Index of Greek Words", "letter": "G", "short": "Greek",
-              "skip": ("ο η το του της τω τη τον την οι αι τα των τοις ταις τους τας και δε τε γαρ ουν "
-                       "μεν αλλα αλλ ει εν εις εκ εξ επι προς δια κατα μετα απο υπο περι παρα οτι ινα "
-                       "ως ου ουκ ουχ μη αυτος αυτου αυτω αυτον αυτη αυτης αυτην αυτων αυτοις αυτους")},
+              "skip": GREEK_SKIP},
     "syriac": {"label": "Syriac words", "title": "Index of Syriac Words", "letter": "Y", "short": "Syriac",
                "skip": ""},
 }
@@ -249,6 +265,8 @@ SCRIPTURE_LETTERS = {None, "", "O", "A", "N", "X", "S", "I"}
 
 DEFAULT_WORDS = {
     "group_forms": True,          # group forms that differ only in accents / breathings / vowel points
+    "dictionary_forms": True,     # Greek and Hebrew: file every form under its dictionary form (lemma)
+    "forms_as_subentries": False, # ...and list the printed forms as subentries under it
     "skip_block_quotes": True,    # skip paragraphs in a quotation style, and indented prose paragraphs
     "max_run": 4,                 # a longer stretch of words is a quotation...
     "list_item_max": 2,           # ...unless it is a list of items this short
@@ -351,8 +369,9 @@ class TermRef:
     sub: str = ""
     sort: str = ""
     sub_sort: str = ""
-    key: str = ""             # grouping key for words
+    key: str = ""             # grouping key for words ("lex:<script>:<n>" when filed under a dictionary form)
     cat: object = field(default=None, repr=False, compare=False)
+    note: str = ""            # why the dictionary form is uncertain
 
     @property
     def book_name(self) -> str:
@@ -520,6 +539,12 @@ class CompiledSet:
     crossrefs: list        # [(TermRef, "see"|"see_also", target)]
 
 
+def split_targets(s) -> list[str]:
+    """ "Mary; Dormition" or "Mary | Dormition" -> ["Dormition", "Mary"] (alphabetical, as CMOS has it)."""
+    parts = [x.strip() for x in re.split(r"[;|]", s or "") if x.strip()]
+    return sorted(dict.fromkeys(parts), key=lambda x: (fold_str(x), x))
+
+
 def compile_set(d: IndexDef) -> CompiledSet:
     o = d.opts
     case, marks = not o.get("case_sensitive"), bool(o.get("ignore_marks", True))
@@ -530,13 +555,12 @@ def compile_set(d: IndexDef) -> CompiledSet:
             continue
         sub = (e.get("sub") or "").strip()
         ref = TermRef(d.id, h, sub, (e.get("sort") or "").strip(), (e.get("sub_sort") or "").strip())
-        see = (e.get("see") or "").strip()
-        also = (e.get("see_also") or "").strip()
+        see = split_targets(e.get("see"))
+        also = split_targets(e.get("see_also"))
         if see:
-            xrefs.append((ref, "see", see))
+            xrefs.extend((ref, "see", t) for t in see)
             continue
-        if also:
-            xrefs.append((ref, "see_also", also))
+        xrefs.extend((ref, "see_also", t) for t in also)
         fl = [f for f in (e.get("forms") or []) if f and f.strip()]
         if not fl:
             fl = [sub or h]
@@ -603,6 +627,103 @@ def match_set(cs: CompiledSet, text: str, meta: SegMeta, cache: dict) -> list[Te
 
 
 # ---------------------------------------------------------------------------
+# Dictionary forms (Hebrew: OSHB lemmas / Strong's headwords; Greek: MorphGNT)
+# ---------------------------------------------------------------------------
+LEX_SCRIPTS = ("hebrew", "greek")
+CANTILLATION = set(range(0x0591, 0x05B0)) | {0x05BD, 0x05BF, 0x05C0, 0x05C3, 0x05C4, 0x05C5, 0x05C6}
+LEX_DROP = set("/־\u200d\u200c\u034f")
+
+
+def _decomp_tables():
+    """Full canonical decomposition of every Greek and Hebrew character, and the
+    combining class of every mark, so the InDesign script can build the same keys."""
+    dec, ccc = {}, {}
+    for a, b in ((0x370, 0x3FF), (0x1F00, 0x1FFF), (0x590, 0x5FF), (0xFB1D, 0xFB4F), (0x300, 0x36F)):
+        for cp in range(a, b + 1):
+            c = chr(cp)
+            d = unicodedata.normalize("NFD", c)
+            if d != c:
+                dec[c] = d
+            for ch in d:
+                k = unicodedata.combining(ch)
+                if k:
+                    ccc[ch] = k
+    return dec, ccc
+
+
+DECOMP, CCC = _decomp_tables()
+
+
+def lex_key(form: str, script: str) -> str:
+    """The pointed lookup key: decomposed, lower case, grave = acute, ς = σ (Greek);
+    cantillation dropped, qamats qatan = qamats (Hebrew); marks in canonical order."""
+    chars = []
+    for c in form:
+        for ch in DECOMP.get(c, c):
+            cp = ord(ch)
+            if ch in LEX_DROP or ch in ELISION:
+                continue
+            if script == "hebrew":
+                if cp in CANTILLATION:
+                    continue
+                if ch == "\u05c7":
+                    ch = "\u05b8"
+            else:
+                ch = LOWER.get(ch, ch)
+                if ch == "\u0300":
+                    ch = "\u0301"
+            chars.append(ch)
+    # canonical ordering of each run of marks (stable sort by combining class)
+    out, i = [], 0
+    while i < len(chars):
+        if CCC.get(chars[i]):
+            j = i
+            while j < len(chars) and CCC.get(chars[j]):
+                j += 1
+            out.extend(sorted(chars[i:j], key=lambda ch: CCC[ch]))
+            i = j
+        else:
+            out.append(chars[i])
+            i += 1
+    return "".join(out)
+
+
+_LEXICON: dict | None = None
+
+
+def lexicon() -> dict:
+    """{script: {"lemmas": [...], "pointed": {key: "ids"}, "plain": {key: "ids"}}}"""
+    global _LEXICON
+    if _LEXICON is None:
+        import json
+        from .catalog import data_dir
+        _LEXICON = {}
+        try:
+            raw = json.loads((data_dir() / "lexicon.json").read_text(encoding="utf-8"))
+        except Exception:
+            raw = {}
+        for sc in LEX_SCRIPTS:
+            x = raw.get(sc)
+            if not x:
+                continue
+            _LEXICON[sc] = {"lemmas": x["lemmas"],
+                            "pointed": {lex_key(k, sc): v for k, v in x["pointed"].items()},
+                            "plain": x["plain"]}
+    return _LEXICON
+
+
+def lemma_ids(script: str, form: str, folded: str | None = None) -> list[int]:
+    """Dictionary-form ids for a printed form: [] unknown, [n] certain, [n, m, …] unclear."""
+    lex = lexicon().get(script)
+    if not lex:
+        return []
+    ids = lex["pointed"].get(lex_key(form, script))
+    if ids is None:
+        ids = lex["plain"].get(folded if folded is not None else fold_str(form))
+    return [int(x) for x in ids.split(",")] if ids else []
+
+
+# ---------------------------------------------------------------------------
 # The engine: one object per scan
 # ---------------------------------------------------------------------------
 class TermEngine:
@@ -622,10 +743,32 @@ class TermEngine:
     def _word_ref(self, d: IndexDef, text: str, s: int, e: int):
         form = text[s:e]
         key_full = fold_str(form)
+        script = d.opts.get("script")
+        elided = ""
+        if script == "greek" and key_full and key_full[-1] in ELISION:
+            bare = key_full.rstrip("".join(ELISION))
+            elided = ELIDED.get(bare, "")
+            key_full = elided or bare
         letters = sum(1 for c in key_full if is_letter(c))
-        if letters < self.ws["min_letters"] or key_full in self.skip.get(d.id, ()):
+        skip = self.skip.get(d.id, ())
+        if letters < self.ws["min_letters"] or key_full in skip:
             return None
         key = key_full if self.ws["group_forms"] else fold_str(form, True, False)
+        if script in LEX_SCRIPTS and self.ws.get("dictionary_forms", True):
+            ids = lemma_ids(script, form, key_full)
+            if ids:
+                lemmas = lexicon()[script]["lemmas"]
+                single = [i for i in ids if not re.search(r"[\s\u05be]", lemmas[i])]
+                ids = single or ids                      # most frequent first
+                lem = lemmas[ids[0]]
+                if fold_str(lem) in skip:
+                    return None
+                sub = form if self.ws.get("forms_as_subentries") else ""
+                note = ""
+                if len(ids) > 1:
+                    note = f"filed under {lem}; could also be " + " or ".join(lemmas[i] for i in ids[1:3])
+                return TermRef(d.id, lem, sub, "", sort_code(sub) if sub else "", f"lex:{script}:{ids[0]}",
+                               note=note)
         return TermRef(d.id, form, "", "", "", key)
 
     def scan(self, text: str, meta: SegMeta | None = None) -> list[TermHit]:
@@ -652,7 +795,7 @@ class TermEngine:
                 if kind == "words":
                     for s, e, r in refs:
                         if r is not None:
-                            out.append(TermHit(d.id, s, e, "word", r))
+                            out.append(TermHit(d.id, s, e, "word-check" if r.note else "word", r, r.note))
                 else:
                     words = [(s, e, r) for s, e, r in refs if r is not None]
                     if not words:
@@ -672,6 +815,9 @@ def choose_headings(refs: list[TermRef]) -> None:
     accents or vowel points, then one starting lower-case, then the most frequent."""
     groups: dict = {}
     for i, r in enumerate(refs):
+        if r.key.startswith("lex:"):          # filed under its dictionary form already
+            r.sort = sort_code(r.heading)
+            continue
         groups.setdefault((r.index, r.key), []).append((i, r))
     for items in groups.values():
         stats: dict = {}
@@ -768,7 +914,21 @@ def read_term_file(path: str | Path) -> tuple[list[dict], list[str]]:
                             "see_also": ""})
     if not entries:
         problems.append("No terms were found in the file.")
+    lost = [f for e in entries for f in [e["heading"]] + e.get("forms", []) if re.search(r"\?\?|\w\?|\?\w", f)]
+    if lost:
+        problems.insert(0, f"{len(lost)} term(s) contain question marks where letters should be (e.g. "
+                           f"“{lost[0]}”). Excel's plain “CSV (Comma delimited)” format replaces Greek, "
+                           "Hebrew and other letters it can't store with ?. Save the file as "
+                           "“CSV UTF-8 (Comma delimited)” and load it again.")
     return entries, problems
+
+
+def clean_set_name(stem: str) -> str:
+    """A term set's name from its file name, without "(CSV UTF-8)", "- Copy" and the like."""
+    name = re.sub(r"\s*\((?:[^()]*\b(?:csv|utf-?8|comma|delimited|windows|ms-dos|macintosh|excel|tab)\b[^()]*)\)",
+                  "", stem, flags=re.I)
+    name = re.sub(r"\s*-\s*(?:copy|kopie|copia)(?:\s*\(\d+\))?$", "", name, flags=re.I)
+    return name.strip(" -_") or stem
 
 
 def write_term_csv(path: str | Path, entries: list[dict]) -> None:

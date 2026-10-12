@@ -165,13 +165,26 @@ function classifyRun(text, run, maxRun, itemMax) {
 }
 
 // --- term sets ----------------------------------------------------------------
-function TermRef(index, heading, sub, sort, subSort, key) {
+function TermRef(index, heading, sub, sort, subSort, key, note) {
     this.index = index; this.heading = heading; this.sub = sub || ""; this.sort = sort || "";
-    this.subSort = subSort || ""; this.key = key || "";
+    this.subSort = subSort || ""; this.key = key || ""; this.note = note || "";
 }
 TermRef.prototype.display = function () { return this.sub ? this.heading + ", " + this.sub : this.heading; };
 
 function tOpt(d, k) { return tHas(d.opts, k) ? d.opts[k] : TT.setDefaults[k]; }
+// "Mary; Dormition" or "Mary | Dormition" -> ["Dormition", "Mary"] (see terms.split_targets)
+function splitTargets(s) {
+    var parts = String(s || "").split(/[;|]/), out = [], seen = {}, i, t;
+    for (i = 0; i < parts.length; i++) {
+        t = parts[i].replace(/^\s+|\s+$/g, "");
+        if (t && !tHas(seen, t)) { seen[t] = 1; out.push(t); }
+    }
+    out.sort(function (a, b) {
+        var fa = foldStr(a), fb = foldStr(b);
+        return fa < fb ? -1 : fa > fb ? 1 : (a < b ? -1 : a > b ? 1 : 0);
+    });
+    return out;
+}
 function compileSet(d) {
     var cs = !tOpt(d, "case_sensitive"), marks = !!tOpt(d, "ignore_marks");
     var forms = [], xrefs = [], seen = {}, e, k, h, sub, ref, fl, f, ff, key;
@@ -182,9 +195,9 @@ function compileSet(d) {
         sub = String(e.sub || "").replace(/^\s+|\s+$/g, "");
         ref = new TermRef(d.id, h, sub, String(e.sort || "").replace(/^\s+|\s+$/g, ""),
             String(e.sub_sort || "").replace(/^\s+|\s+$/g, ""));
-        var see = String(e.see || "").replace(/^\s+|\s+$/g, ""), also = String(e.see_also || "").replace(/^\s+|\s+$/g, "");
-        if (see) { xrefs.push([ref, "see", see]); continue; }
-        if (also) xrefs.push([ref, "see_also", also]);
+        var see = splitTargets(e.see), also = splitTargets(e.see_also), q;
+        if (see.length) { for (q = 0; q < see.length; q++) xrefs.push([ref, "see", see[q]]); continue; }
+        for (q = 0; q < also.length; q++) xrefs.push([ref, "see_also", also[q]]);
         fl = [];
         for (f = 0; f < (e.forms || []).length; f++) if (e.forms[f] && String(e.forms[f]).replace(/\s+/g, "")) fl.push(e.forms[f]);
         if (!fl.length) fl = [sub || h];
@@ -244,6 +257,67 @@ function matchSet(cs, text, meta, cache) {
     return hits;
 }
 
+// --- dictionary forms (see terms.lex_key / lemma_ids) ------------------------------
+var T_LEX = {}, T_CANT = tSet(TT.lexTables.cant), T_LEXDROP = tSet(TT.lexTables.drop);
+function lexParse(str) {
+    var m = {}, lines = str.split("\n"), i, t;
+    for (i = 0; i < lines.length; i++) {
+        t = lines[i].indexOf("\t");
+        if (t > 0) m[lines[i].substring(0, t)] = lines[i].substring(t + 1);
+    }
+    return m;
+}
+function lexOf(script) {
+    if (tHas(T_LEX, script)) return T_LEX[script];
+    var src = (typeof LEXDATA !== "undefined" && LEXDATA && tHas(LEXDATA, script)) ? LEXDATA[script] : null;
+    T_LEX[script] = src ? {lemmas: src.lemmas.split("\n"), pointed: lexParse(src.pointed), plain: lexParse(src.plain)} : null;
+    return T_LEX[script];
+}
+function lexKey(form, script) {
+    var chars = [], i, j, k, c, d, ch, out = [], run, tmp, ccc = TT.lexTables.ccc;
+    for (i = 0; i < form.length; i++) {
+        c = form.charAt(i);
+        d = tHas(TT.lexTables.decomp, c) ? TT.lexTables.decomp[c] : c;
+        for (j = 0; j < d.length; j++) {
+            ch = d.charAt(j);
+            if (T_LEXDROP[ch] || T_ELISION[ch]) continue;
+            if (script === "hebrew") {
+                if (T_CANT[ch]) continue;
+                if (ch === "\u05c7") ch = "\u05b8";
+            } else {
+                if (tHas(TT.tables.lower, ch)) ch = TT.tables.lower[ch];
+                if (ch === "\u0300") ch = "\u0301";
+            }
+            chars.push(ch);
+        }
+    }
+    // canonical order of each run of marks (stable insertion sort by combining class)
+    i = 0;
+    while (i < chars.length) {
+        if (tHas(ccc, chars[i])) {
+            run = [];
+            while (i < chars.length && tHas(ccc, chars[i])) { run.push(chars[i]); i++; }
+            for (j = 1; j < run.length; j++) {
+                tmp = run[j]; k = j - 1;
+                while (k >= 0 && ccc[run[k]] > ccc[tmp]) { run[k + 1] = run[k]; k--; }
+                run[k + 1] = tmp;
+            }
+            for (j = 0; j < run.length; j++) out.push(run[j]);
+        } else { out.push(chars[i]); i++; }
+    }
+    return out.join("");
+}
+function lemmaIds(script, form, folded) {
+    var lex = lexOf(script), ids, parts, out = [], i;
+    if (!lex) return out;
+    var pk = lexKey(form, script);
+    ids = tHas(lex.pointed, pk) ? lex.pointed[pk] : (tHas(lex.plain, folded) ? lex.plain[folded] : "");
+    if (!ids) return out;
+    parts = ids.split(",");
+    for (i = 0; i < parts.length; i++) out.push(parseInt(parts[i], 10));
+    return out;
+}
+
 // --- the engine --------------------------------------------------------------------
 function TermEngine(defs) {
     this.ws = TT.words;
@@ -262,10 +336,33 @@ function TermEngine(defs) {
     }
 }
 TermEngine.prototype.wordRef = function (d, text, s, e) {
-    var form = text.substring(s, e), keyFull = foldStr(form), letters = 0, i;
+    var form = text.substring(s, e), keyFull = foldStr(form), letters = 0, i, script = d.opts.script, bare;
+    if (script === "greek" && keyFull.length && T_ELISION[keyFull.charAt(keyFull.length - 1)]) {
+        bare = keyFull;
+        while (bare.length && T_ELISION[bare.charAt(bare.length - 1)]) bare = bare.substring(0, bare.length - 1);
+        keyFull = tHas(TT.elided, bare) ? TT.elided[bare] : bare;
+    }
     for (i = 0; i < keyFull.length; i++) if (isLetter(keyFull.charAt(i))) letters++;
-    if (letters < this.ws.min_letters || tHas(this.skip[d.id], keyFull)) return null;
+    var skip = this.skip[d.id];
+    if (letters < this.ws.min_letters || tHas(skip, keyFull)) return null;
     var key = this.ws.group_forms ? keyFull : foldStr(form, true, false);
+    if ((script === "hebrew" || script === "greek") && this.ws.dictionary_forms) {
+        var ids = lemmaIds(script, form, keyFull);
+        if (ids.length) {
+            var lemmas = lexOf(script).lemmas, single = [];
+            for (i = 0; i < ids.length; i++) if (!/[\s\u05be]/.test(lemmas[ids[i]])) single.push(ids[i]);
+            if (single.length) ids = single;
+            var lem = lemmas[ids[0]];
+            if (tHas(skip, foldStr(lem))) return null;
+            var sub = this.ws.forms_as_subentries ? form : "", note = "";
+            if (ids.length > 1) {
+                var alt = [];
+                for (i = 1; i < ids.length && i < 3; i++) alt.push(lemmas[ids[i]]);
+                note = "filed under " + lem + "; could also be " + alt.join(" or ");
+            }
+            return new TermRef(d.id, lem, sub, "", sub ? sortCode(sub) : "", "lex:" + script + ":" + ids[0], note);
+        }
+    }
     return new TermRef(d.id, form, "", "", "", key);
 };
 TermEngine.prototype.scan = function (text, meta) {
@@ -285,7 +382,8 @@ TermEngine.prototype.scan = function (text, meta) {
             for (w = 0; w < run.length; w++) refs.push([run[w][0], run[w][1], this.wordRef(d, text, run[w][0], run[w][1])]);
             if (kind === "words") {
                 for (w = 0; w < refs.length; w++)
-                    if (refs[w][2]) out.push({index: d.id, start: refs[w][0], end: refs[w][1], status: "word", ref: refs[w][2], reason: "", words: []});
+                    if (refs[w][2]) out.push({index: d.id, start: refs[w][0], end: refs[w][1],
+                        status: refs[w][2].note ? "word-check" : "word", ref: refs[w][2], reason: refs[w][2].note, words: []});
             } else {
                 words = [];
                 for (w = 0; w < refs.length; w++) if (refs[w][2]) words.push(refs[w]);
@@ -315,6 +413,7 @@ function chooseHeadings(refs) {
     var groups = {}, order = [], i, r, gk, g, st, form, best, bestScore, sc, key, full, tie, h;
     for (i = 0; i < refs.length; i++) {
         r = refs[i];
+        if (r.key.substring(0, 4) === "lex:") { r.sort = sortCode(r.heading); continue; }   // filed under its dictionary form
         gk = r.index + "\u0001" + r.key;
         if (!tHas(groups, gk)) { groups[gk] = []; order.push(gk); }
         groups[gk].push([i, r]);

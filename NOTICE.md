@@ -36,5 +36,24 @@ on Indicat.
 
 * The manicule (☞) in the app icon is drawn from Noto Serif CJK
   (© Adobe), used under the SIL Open Font License 1.1.
-* The app uses lxml (BSD), python-docx (MIT) and pywin32 (PSF), and is
+* The app uses lxml (BSD), python-docx (MIT), pdfplumber and pdfminer.six
+  (MIT), pypdf (BSD), pypdfium2 (Apache 2.0 / BSD) and pywin32 (PSF), and is
   packaged with PyInstaller (GPL with a bootloader exception).
+
+## Data files (`indicat/data`)
+
+These are built by `tools/build_data.py` from the sources below, and keep
+their own licenses:
+
+* `lexicon.json`, Hebrew part: word forms and lemmas of the **Open Scriptures
+  Hebrew Bible** (morphhb, CC BY 4.0, openscriptures.org) and headwords of the
+  **Open Scriptures Hebrew Lexicon** (HebrewStrong.xml, CC BY 4.0), over the
+  Westminster Leningrad Codex text (public domain).
+* `lexicon.json`, Greek part: lemmas of **MorphGNT** (James Tauber et al.,
+  morphgnt.org), licensed **CC BY-SA 3.0**; this part of the file is shared
+  under the same license. The word forms are those of **The Greek New Testament:
+  SBL Edition** (SBLGNT), copyright © 2010 Society of Biblical Literature and
+  Logos Bible Software, used under its license.
+* `verses.json`: the highest verse of each chapter, counted from the King James
+  Version with Apocrypha (public domain), the Westminster Leningrad Codex
+  (public domain) and the SBLGNT.

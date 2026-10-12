@@ -6,7 +6,8 @@
 var PREF_FILE = File(Folder.userData + "/Indicat-InDesign.txt");
 var OLD_PREF_FILES = [File(Folder.userData + "/ScriptureIndexBuilder-InDesign.txt")];   // earlier versions
 var CREDIT = "Indicat, created by Beaux Hargrove";
-var TERM_LABELS = {word: "Word", term: "Term set match", quotation: "Quotation (not indexed)"};
+var TERM_LABELS = {word: "Word", "word-check": "Word (check the dictionary form)", term: "Term set match", quotation: "Quotation (not indexed)",
+    bibliography: "Bibliography (not indexed)"};
 var QUOTE_PT = 28.35;            // an indent this large (0.4 in / 1 cm) reads as a block quotation
 var COND_NAME = "Scripture Index: check book";
 var NOTE_STYLE = "Scripture Index: note page";
@@ -116,6 +117,11 @@ function langFlags(para) {
     }
     return flags;
 }
+function includeByDefault(status) {
+    if (status === "chapter-only") return !!DATA.opts.wholeChapters;
+    if (status === "mt") return DATA.opts.mtMode !== "exclude";
+    return !!INDEXED[status];
+}
 function paraMeta(para, inTable, isHead, needLangs) {
     var m = {quote: null, table: !!inTable, langs: null}, sname = "";
     try { sname = String(para.appliedParagraphStyle.name); } catch (e) {}
@@ -159,7 +165,18 @@ function collectStories(doc) {
     return out;
 }
 
+var STAGE = "starting";
+function stage(s) { STAGE = s; }
 function main() {
+    try { main2(); }
+    catch (err) {
+        alert("Indicat stopped with an error.\n\n" + String(err.message || err) +
+            "\nScript line: " + (err.line || "?") + "\nStep: " + STAGE +
+            "\n\nPlease send a screenshot of this message.");
+    }
+}
+function main2() {
+    stage("opening the dialog");
     if (!app.documents.length) { alert("Open the document to index first."); return; }
     var doc = app.activeDocument;
     var prefs = showDialog(loadPrefs());
@@ -170,6 +187,12 @@ function main() {
         doc.viewPreferences.horizontalMeasurementUnits = MeasurementUnits.POINTS;
     } catch (e) { units = null; }
     try { run(doc, prefs); }
+    catch (err) {
+        // doScript reports every error at its own line, so say where it really happened
+        alert("Indicat stopped with an error.\n\n" + String(err.message || err) +
+            "\nScript line: " + (err.line || "?") + "\nStep: " + STAGE +
+            "\n\nPlease send a screenshot of this message.");
+    }
     finally {
         if (units !== null) { try { doc.viewPreferences.horizontalMeasurementUnits = units; } catch (e) {} }
     }
@@ -198,12 +221,25 @@ function run(doc, prefs) {
         var before = occs.length, h;
         if (doScripture) for (h = 0; h < hits.length; h++) occs.push({para: para, text: text, hit: hits[h], note: note, seq: occs.length});
         addTerms(para, text, note, meta);
-        var mine = occs.splice(before, occs.length - before);
+        // not splice(): in InDesign's ExtendScript it returns undefined when nothing is removed
+        var mine = occs.slice(before);
+        occs.length = before;
         for (h = 0; h < mine.length; h++) mine[h]._n = h;
         mine.sort(function (x, y) { return (x.hit.start - y.hit.start) || (x.hit.end - y.hit.end) || (x._n - y._n); });
         for (h = 0; h < mine.length; h++) { mine[h].seq = occs.length; occs.push(mine[h]); }
     }
 
+    // the bibliography: under a heading such as "Bibliography" (until the next heading at the
+    // same or a higher level), or in a bibliography paragraph style
+    var BIB_HEAD = /^\s*(?:\d+[.)]?\s*)?(?:select(?:ed)?\s+)?(?:bibliography|works\s+cited|sources\s+consulted|bibliographie|bibliograf\u00eda|bibliografia|literaturverzeichnis)\s*[.:]?\s*$/i;
+    var inBib = false, bibLevel = 0;
+    function headLevel(sname) { var m = /heading\s*(\d)/i.exec(sname); return m ? parseInt(m[1], 10) - 1 : 0; }
+    function bibStatus(hits, isBib) {
+        if (!isBib || DATA.opts.indexBib) return;
+        for (var b = 0; b < hits.length; b++) hits[b].status = "bibliography";
+    }
+
+    stage("reading stories");
     var stories = collectStories(doc);
     for (si = 0; si < stories.length; si++) {
         var story = stories[si].story;
@@ -218,26 +254,38 @@ function run(doc, prefs) {
             var para = paras[pi], text;
             try { text = String(para.contents); } catch (e) { continue; }
             var pstart = para.index, pend = pstart + text.length;
-            var isHead = false;
-            try { isHead = /heading 1|title|chapter/i.test(para.appliedParagraphStyle.name); } catch (e) {}
-            if (isHead) scanner.heading();
+            var isHead = false, sname = "";
+            try { sname = String(para.appliedParagraphStyle.name); } catch (e) {}
+            isHead = /heading|title|chapter/i.test(sname);
+            if (isHead) {
+                scanner.heading();
+                if (BIB_HEAD.test(text.replace(/[\r\n]+$/, ""))) { inBib = true; bibLevel = headLevel(sname); }
+                else if (inBib && headLevel(sname) <= bibLevel) inBib = false;
+            }
+            var isBib = (inBib && !(isHead && BIB_HEAD.test(text.replace(/[\r\n]+$/, "")))) || /bibliograph/i.test(sname);
             var anchors = [], here = [];
             for (k = 0; k < fnPos.length; k++) {
                 if (fnPos[k].idx >= pstart && fnPos[k].idx < pend) { anchors.push(fnPos[k].idx - pstart); here.push(fnPos[k]); }
             }
+            stage("scanning story " + (si + 1) + ", paragraph " + (pi + 1) + ": " + text.substring(0, 60));
             var res = scanner.scan(text, italicFlags(para), segNo, anchors);
+            bibStatus(res.hits, isBib);
+            var nBefore = occs.length;
             addAll(para, text, res.hits, null, paraMeta(para, false, isHead, needLangs));
+            if (isBib && !DATA.opts.indexBib) for (k = nBefore; k < occs.length; k++) if (occs[k].th) occs[k].hit.status = "bibliography";
             for (k = 0; k < here.length; k++) {
                 var ctx = res.snaps[here[k].idx - pstart] || copyCtx(scanner.ctx);
                 var fparas = here[k].fn.texts[0].paragraphs.everyItem().getElements(), fp;
                 for (fp = 0; fp < fparas.length; fp++) {
                     var ftext = String(fparas[fp].contents);
+                    stage("scanning a footnote in story " + (si + 1) + ": " + ftext.substring(0, 60));
                     var fres = scanner.scan(ftext, italicFlags(fparas[fp]), segNo, [], ctx);
                     addAll(fparas[fp], ftext, fres.hits, here[k].n, paraMeta(fparas[fp], false, false, needLangs));
                 }
             }
             segNo++;
         }
+        stage("scanning tables in story " + (si + 1));
         // table cells
         try {
             var cells = story.tables.everyItem().cells.everyItem().getElements(), c;
@@ -252,6 +300,7 @@ function run(doc, prefs) {
             }
         } catch (e) {}
     }
+    stage("grouping word forms");
     // one heading per group of word forms
     var wrefs = [], w;
     for (k = 0; k < occs.length; k++) {
@@ -262,6 +311,7 @@ function run(doc, prefs) {
     }
     chooseHeadings(wrefs);
 
+    stage("preparing the index");
     // --- index topics --------------------------------------------------------
     var index = doc.indexes.length ? doc.indexes[0] : doc.indexes.add();
     var topicCache = {};
@@ -306,12 +356,13 @@ function run(doc, prefs) {
         if (ref.sub) t = topic(t, ref.sub, ref.subSort || sortCode(ref.sub));
         return t;
     }
+    stage("placing index markers");
     // place markers paragraph by paragraph, last hit first
     var byPara = {}, order = [], o, counts = {};
     for (k = 0; k < occs.length; k++) {
         o = occs[k];
-        if (o.th) o.indexed = (o.th.status === "word" || o.th.status === "term") && !!o.th.ref && !(o.note && prefs.notes === "skip");
-        else o.indexed = !!INDEXED[o.hit.status] && o.hit.ref && !(o.note && prefs.notes === "skip");
+        if (o.th) o.indexed = o.hit.status !== "bibliography" && (o.th.status === "word" || o.th.status === "word-check" || o.th.status === "term") && !!o.th.ref && !(o.note && prefs.notes === "skip");
+        else o.indexed = includeByDefault(o.hit.status) && !!o.hit.ref && !(o.note && prefs.notes === "skip");
         var pid = o.para.toSpecifier();
         if (!byPara[pid]) { byPara[pid] = []; order.push(pid); }
         byPara[pid].push(o);
@@ -350,6 +401,7 @@ function run(doc, prefs) {
         }
     }
 
+    stage("adding cross-references");
     // See / See also cross-references of term sets
     var xr = 0;
     for (k = 0; k < defs.length; k++) {
@@ -365,6 +417,28 @@ function run(doc, prefs) {
         }
     }
 
+    // Chicago style for cross-references: "favor. See grace", with See / See also in italics
+    var cmosNote = "";
+    if (xr) {
+        var setSep = false, setStyle = false;
+        try {
+            var gio = doc.indexGenerationOptions;
+            gio.beforeCrossReferenceSeparator = ". ";
+            setSep = true;
+            var cstyle = doc.characterStyles.itemByName("Index Cross-reference");
+            if (!cstyle.isValid) cstyle = doc.characterStyles.add({name: "Index Cross-reference"});
+            try { cstyle.fontStyle = "Italic"; } catch (e1) {}
+            gio.crossReferenceStyle = cstyle;
+            setStyle = true;
+        } catch (e) {}
+        if (!setSep || !setStyle)
+            cmosNote = "\nFor Chicago-style cross-references, in Generate Index > More Options set " +
+                (!setSep ? "Before Cross-reference to a period and a space" : "") +
+                (!setSep && !setStyle ? ", and " : "") +
+                (!setStyle ? "the Cross-reference style to an italic character style" : "") + ".";
+    }
+
+    stage("reading page numbers");
     // pages
     for (k = 0; k < occs.length; k++) {
         o = occs[k];
@@ -377,12 +451,14 @@ function run(doc, prefs) {
             else o.page = "overset";
         } catch (e) {}
     }
+    stage("writing the proofreading list");
     writeProof(doc, occs, prefs);
+    stage("done");
     var parts = [];
     for (var cn in counts) if (counts.hasOwnProperty(cn)) parts.push(cn + " " + counts[cn]);
     alert((defs.length ? "Index markers added: " : "Scripture index markers added: ") + placed +
         (defs.length && parts.length ? " (" + parts.join(", ") + ")" : "") +
-        (xr ? "\nCross-references added: " + xr : "") +
+        (xr ? "\nCross-references added: " + xr + cmosNote : "") +
         (failed ? "\n" + failed + " could not be placed (see the proofreading list)." : "") +
         "\n\nGenerate the index with Window > Type & Tables > Index > Generate Index." +
         (defs.length ? "\nEach word or term index is a top-level entry of the generated index (" +

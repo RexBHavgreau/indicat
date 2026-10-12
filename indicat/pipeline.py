@@ -1,6 +1,7 @@
 """Scan and build: the engine behind both the GUI and the command line."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -48,8 +49,21 @@ def check_custom_separator(text: str) -> str | None:
     return None
 
 
-TERM_LABELS = {"word": "Word", "term": "Term set match", "quotation": "Quotation (not indexed)"}
-TERM_INDEXED = {"word", "term"}
+TERM_LABELS = {"word": "Word", "word-check": "Word (check the dictionary form)", "term": "Term set match",
+               "quotation": "Quotation (not indexed)",
+               "bibliography": "Bibliography (not indexed)"}
+# statuses whose reason is shown next to the label in the review list
+SHOW_REASON = {"quotation", "unknown-book", "check-name", "f-end", "word-check"}
+
+
+def include_by_default(status: str, settings: dict) -> bool:
+    """Is a Scripture hit with this status indexed unless the user says otherwise?"""
+    if status == "chapter-only":
+        return bool(settings.get("whole_chapters"))
+    if status == "mt":
+        return settings.get("mt_mode", "label") != "exclude"
+    return status in INDEXED_STATUSES
+TERM_INDEXED = {"word", "word-check", "term"}
 
 
 @dataclass
@@ -105,9 +119,23 @@ class Occurrence:
         return t if len(t) <= 60 else t[:57] + "…"
 
     @property
+    def open_ended(self) -> bool:
+        """"34ff.": indexed, but marked so it can be checked."""
+        r = self.ref
+        return bool(r is not None and self.is_scripture and r.s1 in ("ff", "ss") and not r.c2
+                    and self.status in INDEXED_STATUSES)
+
+    @property
+    def where_kind(self) -> str:
+        """Body / Footnotes / Endnotes, for the Where filter."""
+        return {"footnote": "Footnotes", "endnote": "Endnotes"}.get(self.note_kind or "", "Body")
+
+    @property
     def status_label(self) -> str:
         s = STATUS_LABELS.get(self.status) or TERM_LABELS.get(self.status, self.status)
-        if self.hit.reason and self.status == "quotation":
+        if self.open_ended:
+            s = "Open-ended (ff)" if self.ref.s1 in ("ff", "f") else "Open-ended (ss)"
+        if self.hit.reason and self.status in SHOW_REASON:
             s += f" — {self.hit.reason}"
         if self.edited:
             s += " (edited)"
@@ -172,7 +200,9 @@ def active_defs(settings: dict, pkg: D.DocxPackage | None = None, messages: list
 
 
 def scan(path: str | Path, settings: dict | None = None,
-         distant_after: int = 15) -> tuple[ScanResult, D.DocxPackage]:
+         distant_after: int = 15, progress=None) -> tuple[ScanResult, D.DocxPackage]:
+    """progress(fraction, text): optional, for a progress bar."""
+    progress = progress or (lambda f, t="": None)
     settings = settings if settings is not None else SET.load()
     cat, lang = SET.make_context(settings)
     pkg = D.DocxPackage(path)
@@ -181,6 +211,7 @@ def scan(path: str | Path, settings: dict | None = None,
     defs = active_defs(settings, pkg, msgs)
     engine = T.TermEngine(settings, defs) if defs else None
     do_scripture = settings.get("scripture", True)
+    do_bib = settings.get("index_bibliography", False)
     occs: list[Occurrence] = []
     seq = 0
 
@@ -193,16 +224,26 @@ def scan(path: str | Path, settings: dict | None = None,
                 inc = h.status in TERM_INDEXED
                 if any(a <= h.start < b for a, b in seg.in_simple_field):
                     inc = False
-                hit = Hit(h.start, h.end, None, h.status, h.reason, raw=seg.text[h.start:h.end])
-                occs.append(Occurrence(uid, seq, seg.part, seg.idx, h.start, h.end, hit, h.ref, h.status,
+                status = h.status
+                if seg.biblio and not do_bib:
+                    status, inc = "bibliography", False
+                hit = Hit(h.start, h.end, None, status, h.reason, raw=seg.text[h.start:h.end])
+                occs.append(Occurrence(uid, seq, seg.part, seg.idx, h.start, h.end, hit, h.ref, status,
                                        inc, _snippet(seg.text, h.start, h.end), note_kind, note_ord,
                                        index=h.index, words=h.words or None))
             else:
                 uid = f"{seg.part}:{seg.idx}:{h.start}:{h.end}"
-                inc = h.status in INDEXED_STATUSES
+                inc = include_by_default(h.status, settings)
                 # references inside simple fields (e.g. old-style hyperlinks) cannot take an XE
                 if any(a <= h.start < b for a, b in seg.in_simple_field):
                     inc = False
+                if h.status == "unknown-book" and h.reason and "?" not in h.reason:
+                    m = re.match(r"“(.+?)”", h.reason)
+                    sug = lang.suggest(m.group(1)) if m else ""
+                    if sug:
+                        h.reason += f" — {m.group(1)} → {sug}"
+                if seg.biblio and not do_bib:
+                    h.status, inc = "bibliography", False
                 occs.append(Occurrence(uid, seq, seg.part, seg.idx, h.start, h.end, h, h.ref,
                                        h.status, inc, _snippet(seg.text, h.start, h.end),
                                        note_kind, note_ord))
@@ -215,7 +256,10 @@ def scan(path: str | Path, settings: dict | None = None,
         items.sort(key=lambda h: (h.start, h.end))
         return items
 
-    for seg in pkg.body_segments:
+    nseg = max(1, len(pkg.body_segments))
+    for si, seg in enumerate(pkg.body_segments):
+        if si % 50 == 0:
+            progress(si / nseg, "Scanning")
         if seg.heading:
             sc.heading()
         hits, snaps = sc.scan_segment(seg.text, seg.italic, seg.idx,
@@ -331,8 +375,9 @@ def _expand_quotations(occs: list[Occurrence]) -> list[Occurrence]:
     for o in occs:
         if o.status == "quotation" and o.include and o.words:
             for k, (s, e, r) in enumerate(o.words):
-                hit = Hit(s, e, None, "word", "from an included quotation", raw="")
-                out.append(Occurrence(f"{o.uid}#{k}", o.seq, o.part, o.seg_idx, s, e, hit, r, "word", True,
+                st = "word-check" if r.note else "word"
+                hit = Hit(s, e, None, st, r.note or "from an included quotation", raw="")
+                out.append(Occurrence(f"{o.uid}#{k}", o.seq, o.part, o.seg_idx, s, e, hit, r, st, True,
                                       o.context, o.note_kind, o.note_ordinal, edited=True,
                                       index=o.index))
         else:
@@ -340,13 +385,16 @@ def _expand_quotations(occs: list[Occurrence]) -> list[Occurrence]:
     return out
 
 
-def build(scan_res: ScanResult, opts: BuildOptions, log=print) -> BuildResult:
+def build(scan_res: ScanResult, opts: BuildOptions, log=print, progress=None) -> BuildResult:
     """Write the indexed copy, paginate with Word if possible, and write the proof list.
 
     The document is re-read from disk so the original file is never modified.
     """
+    progress = progress or (lambda f, t="": None)
     src = scan_res.path
-    fresh, pkg = scan(src, opts.settings if opts.settings is not None else scan_res.settings)
+    progress(0.02, "Reading the manuscript")
+    fresh, pkg = scan(src, opts.settings if opts.settings is not None else scan_res.settings,
+                      progress=lambda f, t="": progress(0.02 + 0.2 * f, "Reading the manuscript"))
     cat = fresh.catalog
     decided = {o.uid: o for o in scan_res.occurrences}
     occs = []
@@ -393,7 +441,10 @@ def build(scan_res: ScanResult, opts: BuildOptions, log=print) -> BuildResult:
     # insert from the end of each segment backwards so offsets stay valid
     to_write.sort(key=lambda o: (o.part, o.seg_idx, o.end), reverse=True)
     written = 0
-    for o in to_write:
+    progress(0.25, "Placing index entries")
+    for wi, o in enumerate(to_write):
+        if wi % 200 == 0:
+            progress(0.25 + 0.2 * wi / max(1, len(to_write)), "Placing index entries")
         seg = segs[(o.part, o.seg_idx)]
         o.ref.cat = cat
         if o.is_scripture:
@@ -416,7 +467,18 @@ def build(scan_res: ScanResult, opts: BuildOptions, log=print) -> BuildResult:
             msgs.append(f"Could not place an index field for {o.display} ({o.where}); add it by hand.")
     log(f"Inserted {written} index entry fields.")
 
-    D.ensure_index_styles(pkg, opts.leader if opts.separator == "\t" else None, opts.columns)
+    settings = opts.settings if opts.settings is not None else scan_res.settings
+    font = None
+    if settings.get("index_font", "body") == "body":
+        font = pkg.body_font()
+    D.ensure_index_styles(pkg, opts.leader if opts.separator == "\t" else None, opts.columns, font)
+    if font:
+        D.set_index_heading_font(pkg, font)
+        log(f"Index font: {font} (the body text font).")
+    shown = font or pkg.styles.font(pkg.styles.id_for_name("index 1"))
+    if shown and font_installed(shown) is False:
+        msgs.append(f"The index is set in “{shown}”, which isn't installed on this computer, so Word will "
+                    "show it in a substitute font (and page breaks may differ from the printer's).")
     used_groups = {o.letter for o in to_write if o.bookmark and o.is_scripture}
     groups = [(L, t) for L, t in cat.groups_in_order() if L in used_groups]
     see_words = T.SEE_WORDS.get(cat_lang(fresh), T.SEE_WORDS["en"])
@@ -425,18 +487,23 @@ def build(scan_res: ScanResult, opts: BuildOptions, log=print) -> BuildResult:
     for d in fresh.defs:
         xrefs = []
         if d.kind == "terms":
+            grouped: dict = {}
             for ref, kind, target in T.compile_set(d).crossrefs:
-                text = f"{see_words[0] if kind == 'see' else see_words[1]} {target}"
+                grouped.setdefault((ref.display(), kind), (ref, kind, []))[2].append(target)
+            for ref, kind, targets in grouped.values():
+                word = see_words[0] if kind == "see" else see_words[1]
+                text = f"{word} {'; '.join(targets)}"
                 entry = D.escape_entry(ref.heading) + (f":{D.escape_entry(ref.sub)}" if ref.sub else "")
                 parts = ref.yomi().split(":", 1) if ref.sub else [ref.yomi()]
                 xrefs.extend(D.xe_elements(entry, ":".join(D.escape_entry(x) for x in parts), None, None, None,
-                                           d.letter, see=text.replace('"', "'")))
+                                           d.letter, see=text.replace('"', "'"), see_italic=len(word)))
         if d.letter in used_letters or xrefs:
             extra.append((d.title, d.letter, xrefs))
         else:
             msgs.append(f"Nothing was indexed for “{d.title}”, so it was left out.")
     D.append_index(pkg, opts.heading or cat.index_title, opts.columns, opts.separator, opts.new_page,
                    groups, single_letter, extra, scripture=fresh.scripture)
+    progress(0.5, "Saving the indexed copy")
     pkg.save(out_docx)
     log(f"Saved {out_docx.name}")
 
@@ -446,6 +513,7 @@ def build(scan_res: ScanResult, opts: BuildOptions, log=print) -> BuildResult:
         if word_com.available():
             try:
                 log("Opening the copy in Word to update fields and read page numbers…")
+                progress(None, "Word is laying out the pages and building the index")
                 msgs.extend(word_com.paginate(out_docx, occs, opts, log, final_docx))
                 used_word = True
             except Exception as exc:          # keep going without page numbers
@@ -462,9 +530,45 @@ def build(scan_res: ScanResult, opts: BuildOptions, log=print) -> BuildResult:
         final_docx = None
 
     from . import proof as P
+    progress(0.95, "Writing the proofreading list")
     P.write_proof(proof, csv_path, src, occs, opts, used_word, msgs, fresh)
+    progress(1.0, "Done")
     log(f"Saved {proof.name}")
     return BuildResult(out_docx, proof, csv_path, used_word, msgs, final_docx)
+
+
+def font_installed(name: str) -> bool | None:
+    """Is a font installed?  None when it can't be told (not Windows)."""
+    import sys
+    if sys.platform != "win32" or not name:
+        return None
+    try:
+        import winreg
+    except Exception:
+        return None
+    want = name.lower()
+    key = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts"
+    found_any = False
+    for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+        try:
+            with winreg.OpenKey(hive, key) as k:
+                i = 0
+                while True:
+                    try:
+                        val = winreg.EnumValue(k, i)[0]
+                    except OSError:
+                        break
+                    i += 1
+                    found_any = True
+                    base = re.sub(r"\s*\((?:TrueType|OpenType|VGA res)\)\s*$", "", val, flags=re.I).lower()
+                    names = [x.strip() for x in base.split("&")]
+                    if any(n == want or n.startswith(want + " ") and n[len(want) + 1:].split()[0] in
+                           ("regular", "bold", "italic", "light", "medium", "semibold", "black", "condensed")
+                           for n in names):
+                        return True
+        except OSError:
+            continue
+    return False if found_any else None
 
 
 def cat_lang(res: ScanResult) -> str:

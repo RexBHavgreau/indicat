@@ -31,12 +31,14 @@ jobs:
       - name: Install requirements
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller
+          pip install -r requirements.txt pyinstaller reportlab
 
       - name: Test (Python and the InDesign JavaScript, which must agree)
         run: |
           python tests/test_parser.py
           python tests/test_terms.py
+          python tests/test_note_matching.py
+          python tests/test_pdf.py
           python tests/js_parity.py
           python tests/terms_parity.py
           python tests/word_mock_test.py
@@ -50,11 +52,23 @@ jobs:
           --collect-data docx
           --hidden-import win32com.client --hidden-import pythoncom
           --add-data "indicat/js;indicat/js"
+          --add-data "indicat/data;indicat/data"
           --add-data "indicat/assets;indicat/assets"
           run_app.py
 
       - name: Write the default InDesign script
         run: python -m indicat jsx "dist/Indicat for InDesign.jsx" --lang en
+
+      - name: Check the .exe carries its data (dictionary forms, verse counts)
+        shell: bash
+        run: |
+          python - <<'PY'
+          from PyInstaller.archive.readers import CArchiveReader
+          names = " ".join(str(k) for k in CArchiveReader("dist/Indicat.exe").toc)
+          for need in ("lexicon.json", "verses.json", "driver.js"):
+              assert need in names, need + " missing from the .exe"
+          print("data files present")
+          PY
 
       - uses: actions/upload-artifact@v4
         with:

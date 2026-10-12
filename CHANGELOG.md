@@ -1,5 +1,75 @@
 # Changelog
 
+## 0.4.0 — 2026-10-12
+
+**New**
+
+* **Index a PDF.** Choose a PDF (born digital, or OCR'd) and Indicat writes a
+  finished index from its printed page numbers, as Word (.docx) or OpenDocument
+  (.odt). It finds folios, running heads, footnotes (with note numbers, "143n12"),
+  endnotes, note marks and headings from the layout; joins words hyphenated at
+  line ends when they are book names or terms, and flags words broken across a
+  page ("Deu-‖143‖teronomy"); reads older styles ("Matt. v. 3", "ch. iii. ver.
+  4"); reads common OCR slips and flags them; lists pages with missing, thin or
+  garbled text; leaves out the book's own index. **Open PDF at this page** opens
+  the right page in Acrobat, SumatraPDF, Foxit, Edge, Chrome or Firefox.
+* **Guided build (Philosopher Mode).** A step-by-step walk through the index
+  settings, offered on first run and in the Help menu.
+* **Dictionary forms for Greek and Hebrew.** Words are filed under their lemma
+  (λόγου → λόγος, וְהָאָרֶץ → אֶרֶץ), from MorphGNT and the Open Scriptures Hebrew
+  Bible; optional subentries for the printed forms; unclear unpointed forms are
+  flagged.
+* **Review list:** every column sorts (Entry in Bible order), with Reading order
+  to go back; **How found** and **Where** filters combine with the others;
+  "Chapter only" and "Open-ended (ff)" views.
+* **Progress bar** with percentage and a clock; "Index built in X min Y s".
+* **Options for each book:** index whole chapters; index the bibliography
+  (found by its heading or style; skipped entries listed in grey); verses in
+  Hebrew numbering marked [MT] or left out; index font matching the body text.
+  Indicat starts with the settings you used last.
+* **Menus:** Index (settings for this book) and Edit > Preferences (where results
+  are saved — same folder, a fixed folder, or ask — Word, PDF reader, updates,
+  abbreviations, books, sections, word indexes, term sets).
+
+**Scripture references**
+
+* An unknown word or abbreviation before a reference is never filled in from
+  context: the row is grey with a suggestion ("Ex. → Exodus? (from CMOS shorter,
+  switched off)").
+* The Apocrypha is always recognized; "Index the Apocrypha" decides whether it is
+  indexed. New forms: Mac/Macc, Letter J, WS (flagged), Wisd; 3–4 Kings and
+  1–2 Paralipomenon flagged as Vulgate names; Apocalypse.
+* "Matthew uses… (16:21)" sets the book; "Zechariah responds… (1:20)" doesn't.
+* Short ranges (16–7 = 16–17); impossible verses flagged (verse counts for the
+  whole Bible, English and Hebrew numbering); "f" = the next verse (flagged at a
+  chapter's end); "ff" kept, sorted after 34 and before 34–35, and marked blue.
+* Hebrew (MT) numbering: "Mal 3:23 [4:5]", "51:3 in the MT".
+* Italic titles after an author's name, volume:page after an italic title, and
+  references in an italic cf. list are told apart.
+* "verse 23" after a range of chapters is flagged; every heading level starts a
+  new context.
+
+**Word output**
+
+* Note page numbers in term and word indexes are right for notes that run onto
+  the next page, for endnotes, and for an entry twice in one note.
+* See / See also follow Chicago style in the finished index ("favor. *See*
+  grace"; several targets in alphabetical order, separated by semicolons); "See"
+  is italic in the live index too.
+* The index uses the body text's font, with a warning if that font isn't
+  installed (the test kit no longer lands in Helvetica Neue).
+* The CSV proof list has a "note" column (merged-note warnings included).
+* Term set names lose "(CSV UTF-8)" and the like; a CSV saved in Excel's plain
+  format (Greek and Hebrew turned to ????) is warned about.
+
+**Greek skip list:** personal pronouns, τίς/τί and the forms of εἰμί added
+(also to saved lists); elided forms (δι’, κατ’, καθ’…) count as the full word.
+
+**InDesign:** fixed the crash on a paragraph with no references ("undefined is
+not an object"), and errors now say which step failed. The script has all the
+Scripture fixes above, dictionary forms, the bibliography, and Chicago-style
+cross-reference settings.
+
 ## 0.3.0 — 2026-10-10
 
 * **Renamed Indicat** (Latin, "it points out"), with a manicule (☞) icon. The
