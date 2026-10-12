@@ -1,6 +1,7 @@
 """Scan and build: the engine behind both the GUI and the command line."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -48,7 +49,19 @@ def check_custom_separator(text: str) -> str | None:
     return None
 
 
-TERM_LABELS = {"word": "Word", "term": "Term set match", "quotation": "Quotation (not indexed)"}
+TERM_LABELS = {"word": "Word", "term": "Term set match", "quotation": "Quotation (not indexed)",
+               "bibliography": "Bibliography (not indexed)"}
+# statuses whose reason is shown next to the label in the review list
+SHOW_REASON = {"quotation", "unknown-book", "check-name", "f-end"}
+
+
+def include_by_default(status: str, settings: dict) -> bool:
+    """Is a Scripture hit with this status indexed unless the user says otherwise?"""
+    if status == "chapter-only":
+        return bool(settings.get("whole_chapters"))
+    if status == "mt":
+        return settings.get("mt_mode", "label") != "exclude"
+    return status in INDEXED_STATUSES
 TERM_INDEXED = {"word", "term"}
 
 
@@ -105,9 +118,23 @@ class Occurrence:
         return t if len(t) <= 60 else t[:57] + "…"
 
     @property
+    def open_ended(self) -> bool:
+        """"34ff.": indexed, but marked so it can be checked."""
+        r = self.ref
+        return bool(r is not None and self.is_scripture and r.s1 in ("ff", "ss") and not r.c2
+                    and self.status in INDEXED_STATUSES)
+
+    @property
+    def where_kind(self) -> str:
+        """Body / Footnotes / Endnotes, for the Where filter."""
+        return {"footnote": "Footnotes", "endnote": "Endnotes"}.get(self.note_kind or "", "Body")
+
+    @property
     def status_label(self) -> str:
         s = STATUS_LABELS.get(self.status) or TERM_LABELS.get(self.status, self.status)
-        if self.hit.reason and self.status == "quotation":
+        if self.open_ended:
+            s = "Open-ended (ff)" if self.ref.s1 in ("ff", "f") else "Open-ended (ss)"
+        if self.hit.reason and self.status in SHOW_REASON:
             s += f" — {self.hit.reason}"
         if self.edited:
             s += " (edited)"
@@ -181,6 +208,7 @@ def scan(path: str | Path, settings: dict | None = None,
     defs = active_defs(settings, pkg, msgs)
     engine = T.TermEngine(settings, defs) if defs else None
     do_scripture = settings.get("scripture", True)
+    do_bib = settings.get("index_bibliography", False)
     occs: list[Occurrence] = []
     seq = 0
 
@@ -193,16 +221,26 @@ def scan(path: str | Path, settings: dict | None = None,
                 inc = h.status in TERM_INDEXED
                 if any(a <= h.start < b for a, b in seg.in_simple_field):
                     inc = False
-                hit = Hit(h.start, h.end, None, h.status, h.reason, raw=seg.text[h.start:h.end])
-                occs.append(Occurrence(uid, seq, seg.part, seg.idx, h.start, h.end, hit, h.ref, h.status,
+                status = h.status
+                if seg.biblio and not do_bib:
+                    status, inc = "bibliography", False
+                hit = Hit(h.start, h.end, None, status, h.reason, raw=seg.text[h.start:h.end])
+                occs.append(Occurrence(uid, seq, seg.part, seg.idx, h.start, h.end, hit, h.ref, status,
                                        inc, _snippet(seg.text, h.start, h.end), note_kind, note_ord,
                                        index=h.index, words=h.words or None))
             else:
                 uid = f"{seg.part}:{seg.idx}:{h.start}:{h.end}"
-                inc = h.status in INDEXED_STATUSES
+                inc = include_by_default(h.status, settings)
                 # references inside simple fields (e.g. old-style hyperlinks) cannot take an XE
                 if any(a <= h.start < b for a, b in seg.in_simple_field):
                     inc = False
+                if h.status == "unknown-book" and h.reason and "?" not in h.reason:
+                    m = re.match(r"“(.+?)”", h.reason)
+                    sug = lang.suggest(m.group(1)) if m else ""
+                    if sug:
+                        h.reason += f" — {m.group(1)} → {sug}"
+                if seg.biblio and not do_bib:
+                    h.status, inc = "bibliography", False
                 occs.append(Occurrence(uid, seq, seg.part, seg.idx, h.start, h.end, h, h.ref,
                                        h.status, inc, _snippet(seg.text, h.start, h.end),
                                        note_kind, note_ord))

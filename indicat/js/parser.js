@@ -534,6 +534,12 @@ Scanner.prototype.cv = function (text, italic, ctx, segNo, hits, s, e, c1, v1, s
         var pre = text.substring(Math.max(0, s - 60), s);
         var uk = pt.unknownBefore.exec(pre);
         if (uk && (pt.notBooks[uk[1].replace(/\.+$/, "").replace(/^\s+|\s+$/g, "")] || resolve(uk[1]))) uk = null;
+        if (uk && uk[1].charAt(uk[1].length - 1) !== ".") {
+            // "While 5:6 does...": an ordinary word starting a sentence, not a book name
+            var bw = text.substring(0, Math.max(0, s - 60) + uk.index + uk[0].indexOf(uk[1]));
+            bw = bw.replace(/[ \u00a0\u2009\u202f\u201c\u2018"']+$/, "");
+            if (!bw || /[.!?\u2026]$/.test(bw)) uk = null;
+        }
         if (CITATION_BEFORE.test(pre) || afterItalicTitle(text, italic, s)) status = "citation";
         else if (uk) {
             status = "unknown-book";

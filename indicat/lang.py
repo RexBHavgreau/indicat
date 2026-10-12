@@ -1,6 +1,7 @@
 """Compile a language profile + user settings into the matcher the parser uses."""
 from __future__ import annotations
 
+import difflib
 import re
 import unicodedata
 
@@ -122,6 +123,13 @@ class Language:
             if norm_spelling(plain) not in self.spellings:
                 add(plain, bid, kind)
         self.book_re = self._build_regex()
+        # spellings in abbreviation sets that are switched off, for suggestions
+        self.disabled_spellings: dict[str, tuple[str, str]] = {}
+        for set_name, table in profile.get("sets", {}).items():
+            if set_name in disabled:
+                for bid, abbrs in table.items():
+                    for s in abbrs:
+                        self.disabled_spellings.setdefault(norm_spelling(s), (bid, set_name))
 
     # -- regex ------------------------------------------------------------------
     def _pattern_for(self, key: str) -> str:
@@ -152,6 +160,18 @@ class Language:
 
     def resolve(self, text: str):
         return self.spellings.get(norm_spelling(text))
+
+    def suggest(self, text: str) -> str:
+        """For a word that isn't a known book name: "Exodus? (from CMOS shorter, switched off)",
+        "Genesis?", or ""."""
+        key = norm_spelling(text)
+        hit = self.disabled_spellings.get(key)
+        if hit and hit[0] in self.cat.books:
+            return f"{self.cat.name(hit[0])}? (from {hit[1]}, switched off)"
+        close = difflib.get_close_matches(key, list(self.spellings), n=1, cutoff=0.8)
+        if close and core_len(close[0]) >= 4:
+            return f"{self.cat.name(self.spellings[close[0]][0])}?"
+        return ""
 
     def flag(self, text: str) -> str:
         return self.flags.get(norm_spelling(text), "")

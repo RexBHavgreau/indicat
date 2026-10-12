@@ -62,6 +62,9 @@ def build_data(settings: dict) -> dict:
         "map": {k: list(v) for k, v in lang.spellings.items()},
         "books": {b.id: [b.name, b.section, b.rank, b.chapters] for b in cat.books.values()},
         "scripture": bool(settings.get("scripture", True)),
+        "opts": {"wholeChapters": bool(settings.get("whole_chapters")),
+                 "mtMode": settings.get("mt_mode", "label"),
+                 "indexBib": bool(settings.get("index_bibliography"))},
         "terms": terms_data(settings),
     }
 

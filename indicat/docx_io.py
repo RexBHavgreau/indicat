@@ -57,6 +57,9 @@ class Segment:
     tnodes: list = field(default_factory=list)
     anchors: list = field(default_factory=list)
     heading: bool = False
+    level: int | None = None       # heading level (0 = top) when heading
+    biblio: bool = False           # in the bibliography
+    style_names: tuple = ()        # paragraph style and the styles it is based on
     note_kind: str | None = None   # for note segments
     note_id: str | None = None
     in_simple_field: list = field(default_factory=list)   # spans inside w:fldSimple (not writable)
@@ -155,8 +158,13 @@ class Styles:
                 res = int(o.get(WVAL, "9"))
                 break
             nm = st.find(w("name"))
-            if nm is not None and nm.get(WVAL, "").lower() in ("heading 1", "title"):
+            name = nm.get(WVAL, "").lower() if nm is not None else ""
+            if name in ("heading 1", "title"):
                 res = 0
+                break
+            hm = re.fullmatch(r"heading ([1-9])", name)
+            if hm:
+                res = int(hm.group(1)) - 1
                 break
             cur = self._based(cur)
         self._outline[sid] = res
@@ -252,6 +260,7 @@ class DocxPackage:
                 for s in segs:
                     s.note_kind, s.note_id = kind, nid
                 self.note_segments[(kind, nid)] = segs
+        mark_bibliography(self.body_segments)
         counters = {"footnote": 0, "endnote": 0}
         for seg in self.body_segments:
             for a in seg.anchors:
@@ -315,6 +324,31 @@ def _twips(el, *names) -> int:
 
 
 QUOTE_INDENT = 567     # twips (about 0.4 in): an indented prose paragraph reads as a block quotation
+
+
+BIB_HEADING_RE = re.compile(r"^\s*(?:\d+[.)]?\s*)?(?:select(?:ed)?\s+)?(?:bibliography|works\s+cited|"
+                            r"sources\s+consulted|bibliographie|bibliografía|bibliografia|literaturverzeichnis)"
+                            r"\s*[.:]?\s*$", re.I)
+BIB_STYLE_RE = re.compile(r"bibliograph|bibliograf", re.I)
+
+
+def mark_bibliography(segs: list) -> int:
+    """Mark the paragraphs of the bibliography: everything under a heading such as
+    "Bibliography" or "Works Cited" (until the next heading at the same or a higher
+    level), and any paragraph in a bibliography style.  Returns how many were marked."""
+    inside, level, n = False, 0, 0
+    for seg in segs:
+        if seg.heading:
+            lvl = seg.level if seg.level is not None else 0
+            if BIB_HEADING_RE.match(seg.text or ""):
+                inside, level = True, lvl
+                continue
+            if inside and lvl <= level:
+                inside = False
+        if inside or any(BIB_STYLE_RE.search(nm or "") for nm in seg.style_names):
+            seg.biblio = True
+            n += 1
+    return n
 
 
 def _quote_kind(ppr, pstyle, styles: Styles, heading: bool) -> str | None:
@@ -405,10 +439,12 @@ def _walk_part(root, part: str, styles: Styles, pkg: DocxPackage, start: int = 0
                 s = ppr.find(w("pStyle"))
                 ps = s.get(WVAL) if s is not None else None
                 ol = ppr.find(w("outlineLvl"))
-                if ol is not None and ol.get(WVAL) == "0":
-                    seg.heading = True
-            if styles.outline(ps) == 0:
-                seg.heading = True
+                if ol is not None and ol.get(WVAL, "9").isdigit() and int(ol.get(WVAL)) < 9:
+                    seg.heading, seg.level = True, int(ol.get(WVAL))
+            lvl = styles.outline(ps)
+            if not seg.heading and lvl is not None and lvl < 9:
+                seg.heading, seg.level = True, lvl
+            seg.style_names = tuple(styles.names(ps)) if ps else ()
             seg.in_table = table_depth[0] > 0
             seg.quote = _quote_kind(ppr, ps, styles, seg.heading)
             stack.append(seg)

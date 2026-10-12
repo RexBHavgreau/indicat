@@ -6,7 +6,8 @@
 var PREF_FILE = File(Folder.userData + "/Indicat-InDesign.txt");
 var OLD_PREF_FILES = [File(Folder.userData + "/ScriptureIndexBuilder-InDesign.txt")];   // earlier versions
 var CREDIT = "Indicat, created by Beaux Hargrove";
-var TERM_LABELS = {word: "Word", term: "Term set match", quotation: "Quotation (not indexed)"};
+var TERM_LABELS = {word: "Word", term: "Term set match", quotation: "Quotation (not indexed)",
+    bibliography: "Bibliography (not indexed)"};
 var QUOTE_PT = 28.35;            // an indent this large (0.4 in / 1 cm) reads as a block quotation
 var COND_NAME = "Scripture Index: check book";
 var NOTE_STYLE = "Scripture Index: note page";
@@ -116,6 +117,11 @@ function langFlags(para) {
     }
     return flags;
 }
+function includeByDefault(status) {
+    if (status === "chapter-only") return !!DATA.opts.wholeChapters;
+    if (status === "mt") return DATA.opts.mtMode !== "exclude";
+    return !!INDEXED[status];
+}
 function paraMeta(para, inTable, isHead, needLangs) {
     var m = {quote: null, table: !!inTable, langs: null}, sname = "";
     try { sname = String(para.appliedParagraphStyle.name); } catch (e) {}
@@ -223,6 +229,16 @@ function run(doc, prefs) {
         for (h = 0; h < mine.length; h++) { mine[h].seq = occs.length; occs.push(mine[h]); }
     }
 
+    // the bibliography: under a heading such as "Bibliography" (until the next heading at the
+    // same or a higher level), or in a bibliography paragraph style
+    var BIB_HEAD = /^\s*(?:\d+[.)]?\s*)?(?:select(?:ed)?\s+)?(?:bibliography|works\s+cited|sources\s+consulted|bibliographie|bibliograf\u00eda|bibliografia|literaturverzeichnis)\s*[.:]?\s*$/i;
+    var inBib = false, bibLevel = 0;
+    function headLevel(sname) { var m = /heading\s*(\d)/i.exec(sname); return m ? parseInt(m[1], 10) - 1 : 0; }
+    function bibStatus(hits, isBib) {
+        if (!isBib || DATA.opts.indexBib) return;
+        for (var b = 0; b < hits.length; b++) hits[b].status = "bibliography";
+    }
+
     stage("reading stories");
     var stories = collectStories(doc);
     for (si = 0; si < stories.length; si++) {
@@ -238,16 +254,25 @@ function run(doc, prefs) {
             var para = paras[pi], text;
             try { text = String(para.contents); } catch (e) { continue; }
             var pstart = para.index, pend = pstart + text.length;
-            var isHead = false;
-            try { isHead = /heading 1|title|chapter/i.test(para.appliedParagraphStyle.name); } catch (e) {}
-            if (isHead) scanner.heading();
+            var isHead = false, sname = "";
+            try { sname = String(para.appliedParagraphStyle.name); } catch (e) {}
+            isHead = /heading|title|chapter/i.test(sname);
+            if (isHead) {
+                scanner.heading();
+                if (BIB_HEAD.test(text.replace(/[\r\n]+$/, ""))) { inBib = true; bibLevel = headLevel(sname); }
+                else if (inBib && headLevel(sname) <= bibLevel) inBib = false;
+            }
+            var isBib = (inBib && !(isHead && BIB_HEAD.test(text.replace(/[\r\n]+$/, "")))) || /bibliograph/i.test(sname);
             var anchors = [], here = [];
             for (k = 0; k < fnPos.length; k++) {
                 if (fnPos[k].idx >= pstart && fnPos[k].idx < pend) { anchors.push(fnPos[k].idx - pstart); here.push(fnPos[k]); }
             }
             stage("scanning story " + (si + 1) + ", paragraph " + (pi + 1) + ": " + text.substring(0, 60));
             var res = scanner.scan(text, italicFlags(para), segNo, anchors);
+            bibStatus(res.hits, isBib);
+            var nBefore = occs.length;
             addAll(para, text, res.hits, null, paraMeta(para, false, isHead, needLangs));
+            if (isBib && !DATA.opts.indexBib) for (k = nBefore; k < occs.length; k++) if (occs[k].th) occs[k].hit.status = "bibliography";
             for (k = 0; k < here.length; k++) {
                 var ctx = res.snaps[here[k].idx - pstart] || copyCtx(scanner.ctx);
                 var fparas = here[k].fn.texts[0].paragraphs.everyItem().getElements(), fp;
@@ -336,8 +361,8 @@ function run(doc, prefs) {
     var byPara = {}, order = [], o, counts = {};
     for (k = 0; k < occs.length; k++) {
         o = occs[k];
-        if (o.th) o.indexed = (o.th.status === "word" || o.th.status === "term") && !!o.th.ref && !(o.note && prefs.notes === "skip");
-        else o.indexed = !!INDEXED[o.hit.status] && o.hit.ref && !(o.note && prefs.notes === "skip");
+        if (o.th) o.indexed = o.hit.status !== "bibliography" && (o.th.status === "word" || o.th.status === "term") && !!o.th.ref && !(o.note && prefs.notes === "skip");
+        else o.indexed = includeByDefault(o.hit.status) && !!o.hit.ref && !(o.note && prefs.notes === "skip");
         var pid = o.para.toSpecifier();
         if (!byPara[pid]) { byPara[pid] = []; order.push(pid); }
         byPara[pid].push(o);

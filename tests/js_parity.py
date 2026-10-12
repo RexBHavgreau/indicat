@@ -32,6 +32,7 @@ SENTENCES = {
            "Gen 1:28 and 2 Kings 5:1; Prov 5:18, 19, and 2 Cor 3:1.",
            # 0.4.0
            "In Genesis 3:15 the promise. Later Ex. 24:16; 40:34–35. See Geneses 3:15 (a typo).",
+           "In Revelation 12 the dragon appears. While 5:6 shows the Lamb. “Then 4:1 opens.” Gen. 2:4",
            "Tob 5:15, 6:8; 1 Mac 12:11; 2 Mac 1:18; Letter J 5; WS 2:24 (3 Kings 8:10–11) the Apocalypse (12:1)",
            "In Luke 24 the verb recurs. Matthew uses it (16:21; 17:10), Mark uses it (8:31), "
            "and John uses it (3:7, 14). As we read in Mark (3:34).",

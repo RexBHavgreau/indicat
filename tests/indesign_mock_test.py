@@ -35,7 +35,7 @@ def run(settings, expect):
 
 s = copy.deepcopy(DEFAULTS)
 s["apocrypha"] = True
-run(s, ["Scripture index markers added: 13"])
+run(s, ["Scripture index markers added: 13", "Bibliography (not indexed)"])
 print("OK   InDesign script (Scripture only) ran against the mock document")
 
 s["words"] = {"scripts": {"greek": {"enabled": True}, "hebrew": {"enabled": True}}}
@@ -50,3 +50,7 @@ run(s, ["Index markers added: 20 (", "Scripture 13", "Greek 2", "Hebrew 2", "Sub
         "Index of Hebrew and Aramaic Words [9900]", "Index of Greek Words [9901]", "λόγος [2024122427] x1",
         "Subject Index [9902]", "Davidic [davidic] x1", '[["covenant","see"]]', "<th>Index</th>"])
 print("OK   InDesign script (Scripture, Greek, Hebrew, term set) ran against the mock document")
+
+s["index_bibliography"] = True
+run(s, ["Scripture 14", "Subjects 4"])
+print("OK   InDesign script indexes the bibliography when asked")

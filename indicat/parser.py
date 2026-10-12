@@ -629,6 +629,11 @@ class Scanner:
             uk = pt.unknown_before.search(pre)
             if uk and (uk.group(1).rstrip(".").strip() in pt.not_books or lang.resolve(uk.group(1))):
                 uk = None
+            if uk and not uk.group(1).endswith("."):
+                # "While 5:6 does…": an ordinary word starting a sentence, not a book name
+                before = text[:max(0, s - 60) + uk.start(1)].rstrip(" \u00a0\u2009\u202f“‘\"'")
+                if not before or before[-1] in ".!?…":
+                    uk = None
             if CITATION_BEFORE.search(pre) or _after_italic_title(text, italic, s):
                 status = "citation"
             elif uk:

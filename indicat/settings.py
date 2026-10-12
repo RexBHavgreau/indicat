@@ -39,9 +39,20 @@ DEFAULTS = {
     "scripture": True,                   # build the Scripture index
     "words": {},                         # original-language word indexes (see terms.DEFAULT_WORDS)
     "term_sets": [],                     # user term sets (see terms.py)
+    # 0.4.0
+    "whole_chapters": False,             # index references to whole chapters ("Proverbs 5")
+    "index_bibliography": False,         # index references and words in the bibliography
+    "mt_mode": "label",                  # Hebrew (MT) verse numbers: "label" with [MT] | "exclude"
+    "index_font": "body",                # "body" = match the body text | "styles" = the document's index styles
+    "save_location": "same",             # "same" folder as the manuscript | "fixed" folder | "ask"
+    "save_folder": "",                   # the fixed folder
+    "pdf_viewer": "auto",                # auto | acrobat | sumatra | foxit | edge | chrome | firefox | default
+    "pdf_viewer_path": "",
+    "welcome_done": False,               # the first-run welcome (guided build or full window) was shown
 }
 # keys that are personal/machine-specific and are not exported
-LOCAL_KEYS = {"last_file", "out_dir", "last_indexed", "use_word", "_migrated_from", "_settings_version"}
+LOCAL_KEYS = {"last_file", "out_dir", "last_indexed", "use_word", "_migrated_from", "_settings_version",
+              "save_folder", "pdf_viewer_path", "welcome_done"}
 
 APP_FOLDER = "Indicat"
 # folders of earlier versions, newest first

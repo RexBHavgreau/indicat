@@ -161,6 +161,9 @@ def test_unknown_abbreviation_never_borrows_a_book():
     assert r[1][0] == "unknown-book" and r[1][1] is None and r[2][0] == "unknown-book", r
     r = refs("Genesis 3:15 … see Geneses 3:15 (a typo).")
     assert r[1] == ("unknown-book", None)
+    # an ordinary word starting a sentence is not taken for a book name
+    r = refs("In Revelation 12 the dragon appears. While 5:6 shows the Lamb. “Then 4:1 opens.”")
+    assert [x[0] for x in r] == ["chapter-only", "inferred", "inferred"], r
 
 
 def test_apocrypha_forms_and_vulgate_kings():
