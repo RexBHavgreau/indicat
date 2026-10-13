@@ -42,13 +42,20 @@ Can't be tested here: the real download and restart on Windows, and SmartScreen/
 freshly downloaded unsigned .exe. Needs a run on Beaux's machine (0.4.1 updating to a test
 release).
 
-**Open questions for Beaux:**
+**First start of the new version (decided):**
 
-- Old copies stay in the folder (`Indicat 0.4.1.exe`, `Indicat 0.4.2.exe`, …), and desktop
-  shortcuts and taskbar pins still point to the old one. Should the new version offer to
-  delete the old copy at its first start? Should it make or update a desktop / Start menu
-  shortcut called "Indicat"?
-- "Don't remind me about this version"?
+- It looks in its own folder for older copies (`Indicat 0.4.1.exe`, …, and the old
+  `Indicat.exe`) and offers: "Delete the old version (Indicat Y)? Your settings are kept."
+  If the old copy is still closing, it waits a moment and tries again; if it can't delete it,
+  it says so and leaves it.
+- It updates shortcuts that point to the old copy so they open the new one: the desktop, the
+  Start menu and the taskbar pins (all `.lnk` files, changed through Windows' own shortcut
+  object, which the .exe already carries via pywin32). Shortcuts pointing elsewhere are left
+  alone.
+- No "Don't remind me about this version" for now; maybe later, once things settle.
+
+Can't be tested here: whether Windows refreshes a retargeted taskbar pin at once or only after
+signing out (check on Beaux's machine).
 
 ### 2. Stop publishing the InDesign script in the release
 
