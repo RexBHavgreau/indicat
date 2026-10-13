@@ -111,3 +111,9 @@ document's styles set the leader; change it in Word: References > Insert Index >
 ### 5. …
 
 (more updates, improvements and fixes to add here)
+
+## Decided against
+
+- Live .odt indexing (2026-10-13). LibreOffice's own index sorts by the shown text, not Bible
+  order; Indicat could drive LibreOffice for page numbers instead, but it would add too much to
+  an already large app. LibreOffice users keep exporting to PDF and using the PDF route.
