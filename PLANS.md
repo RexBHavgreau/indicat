@@ -64,6 +64,50 @@ script, but the release no longer carries it (users make their own from the app)
 `build.yml`: write it outside `dist/` (or drop it before publishing) so `files: dist/*` only
 publishes the .exe.
 
-### 3. …
+### 3. A template for PDF indexes
+
+**Now:** the PDF route writes its .docx index from python-docx's built-in blank document, with
+Indicat's own styles (font from the PDF, 10 pt, index 1/2). It ignores the user's Word
+templates, so the index doesn't look like the house style.
+
+**Wanted:** Edit > Preferences > "Template for indexes made from a PDF": a .dotx/.dotm/.docx the
+user picks. Indicat starts the index from that file: its page size, margins, Normal, Heading and
+index 1/2/3 styles. Applies to the .docx output (the .odt keeps Indicat's own styles).
+
+Code: `static_index.write_docx` opens the template instead of `Document()` (a .dotx/.dotm needs
+its main content type switched to a document; body text and macros are dropped), and creates a
+style only when the template lacks it; a new `pdf_template` setting (bump `SETTINGS_VERSION`,
+step in `migrate()`). Tests with a sample template: styles, page size and margins carried.
+
+**Questions for Beaux:**
+
+- Choices: "Indicat's plain style" / "Word's Normal template" (found at
+  `%APPDATA%\Microsoft\Templates\Normal.dotm`) / "Another template…". Which should be the
+  default?
+- When the template has its own index styles, should Indicat's settings (columns, right-aligned
+  numbers and leader, index font) still be applied on top, or should the template's styles
+  win? (Suggestion: columns and leader from Indicat, since you pick them for each book; fonts,
+  sizes and indents from the template.)
+
+### 4. Fix: "no leader" came out with a dot leader in Word
+
+**What happens:** Indicat writes the "index 1/2" styles with a right tab and no leader. Then, to
+read page numbers, it opens the copy in Word and calls `Indexes(i).Update()`. Word's Index
+object has its own `TabLeader` setting, which defaults to dots, and Word applies it when it
+rebuilds an index with right-aligned numbers, over the style. That is the most likely cause.
+(Two others to rule out: the document's attached template set to "Automatically update
+document styles", which copies the template's index styles over Indicat's on opening; and
+a third index level, index 3, which Indicat doesn't give a tab at all.)
+
+**Fix:** in `word_com`, before updating each index, set `TabLeader` (none → spaces, dot →
+dots) and `RightAlignPageNumbers` from the book's settings; give index 3 the same tab as 1 and
+2; and turn off "Automatically update document styles" in the copy (never in the original).
+`word_mock_test.py` checks the properties are set.
+
+Can't be tested here: needs a run in real Word, ideally on the document where it happened.
+If Word still overrides it after this, the fall-back is a note in the build log ("Your
+document's styles set the leader; change it in Word: References > Insert Index > Tab leader").
+
+### 5. …
 
 (more updates, improvements and fixes to add here)
