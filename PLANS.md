@@ -79,15 +79,15 @@ its main content type switched to a document; body text and macros are dropped),
 style only when the template lacks it; a new `pdf_template` setting (bump `SETTINGS_VERSION`,
 step in `migrate()`). Tests with a sample template: styles, page size and margins carried.
 
-**Questions for Beaux:**
+**Decided:**
 
-- Choices: "Indicat's plain style" / "Word's Normal template" (found at
-  `%APPDATA%\Microsoft\Templates\Normal.dotm`) / "Another template…". Which should be the
-  default?
-- When the template has its own index styles, should Indicat's settings (columns, right-aligned
-  numbers and leader, index font) still be applied on top, or should the template's styles
-  win? (Suggestion: columns and leader from Indicat, since you pick them for each book; fonts,
-  sizes and indents from the template.)
+- Default: Word's Normal template (`%APPDATA%\Microsoft\Templates\Normal.dotm`). The user
+  can pick another template in Preferences. If Normal.dotm isn't found (no Word on the
+  computer), Indicat uses its plain style and says so in the log.
+- Indicat's settings win over the template: columns, right-aligned page numbers and leader,
+  and the index font ("match the body text" takes the font from the PDF; "the document's index
+  styles" keeps the template's font). Everything Indicat has no setting for (sizes, indents,
+  spacing, page size, margins, headings) comes from the template.
 
 ### 4. Fix: "no leader" came out with a dot leader in Word
 
