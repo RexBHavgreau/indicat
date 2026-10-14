@@ -112,6 +112,21 @@ document's styles set the leader; change it in Word: References > Insert Index >
 
 (more updates, improvements and fixes to add here)
 
+## Parked: a Mac version (for a contributor with a Mac)
+
+Many designers and editors use Macs, so it's worth doing, but Beaux has no Mac to test on.
+What it would take:
+
+- A macOS job in `build.yml` (PyInstaller .app, in a .dmg or .zip).
+- Settings in `~/Library/Application Support/Indicat`; Cmd shortcuts; the Mac theme; fonts and
+  PDF readers found without the Windows registry; page jumps in Acrobat/Skim (Preview can't).
+- Word automation (`word_com.py`) is Windows-only: on the Mac, no note locators (n#), static
+  copy or CMOS cross-references in the finished copy. Say so in the app; the live Word index,
+  the PDF route, the InDesign script and the proofreading list all work.
+- Signing and notarizing (Apple developer account, $99/year), or users must right-click > Open.
+- The update-in-place design needs a Mac version (replacing an .app bundle).
+- Someone with a Mac to test each release in real Word and InDesign.
+
 ## Decided against
 
 - Live .odt indexing (2026-10-13). LibreOffice's own index sorts by the shown text, not Bible
