@@ -22,9 +22,14 @@ echo Installing requirements ...
 "%VPY%" -m pip install --upgrade pip >nul
 "%VPY%" -m pip install -r requirements.txt pyinstaller || goto :fail
 
-echo Building ...
+rem The program carries its version in its name: "Indicat 0.4.1.exe"
+"%VPY%" -c "import indicat; print(indicat.__version__)" > "%TEMP%\indicat_version.txt" || goto :fail
+set /p VER=<"%TEMP%\indicat_version.txt"
+del "%TEMP%\indicat_version.txt"
+
+echo Building Indicat %VER% ...
 "%VPY%" -m PyInstaller --noconfirm --clean --onefile --windowed ^
-    --name Indicat ^
+    --name "Indicat %VER%" ^
     --icon "indicat\assets\indicat.ico" ^
     --collect-data docx ^
     --add-data "indicat\js;indicat\js" ^
@@ -35,7 +40,7 @@ echo Building ...
     run_app.py || goto :fail
 
 echo.
-echo Done:  dist\Indicat.exe
+echo Done:  "dist\Indicat %VER%.exe"
 echo.
 pause
 exit /b 0

@@ -8,6 +8,8 @@ Written as Word (.docx) or OpenDocument (.odt).
 """
 from __future__ import annotations
 
+import io
+import os
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -161,30 +163,139 @@ def entry_runs(e: Entry, sep: str) -> list[Run]:
 # ---------------------------------------------------------------------------
 # Word
 # ---------------------------------------------------------------------------
-def write_docx(path: Path, sections: list[Section], opts, font: str) -> None:
+# The main part's content type in a template or macro-enabled file, and in a plain document
+_MAIN_TYPES = (b"application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml",
+               b"application/vnd.ms-word.template.macroEnabledTemplate.main+xml",
+               b"application/vnd.ms-word.document.macroEnabled.main+xml")
+_DOC_TYPE = b"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"
+# relationships a .docx must not carry (macros, toolbars, keyboard shortcuts, building blocks)
+_DROP_RELS = ("/vbaProject", "/keyMapCustomizations", "/attachedToolbars", "/glossaryDocument")
+
+
+def normal_template() -> Path | None:
+    """Word's Normal template, if Word has made one for this user."""
+    base = os.environ.get("APPDATA")
+    if not base:
+        return None
+    p = Path(base) / "Microsoft" / "Templates" / "Normal.dotm"
+    return p if p.is_file() else None
+
+
+def template_for(settings: dict) -> tuple[Path | None, str | None]:
+    """(the template to start a .docx index from, or None for Indicat's plain style; a note for the user)"""
+    choice = settings.get("pdf_template", "normal")
+    if choice == "plain":
+        return None, None
+    if choice == "file":
+        p = (settings.get("pdf_template_path") or "").strip()
+        if p and Path(p).is_file():
+            return Path(p), None
+        return None, (f"The template “{p}” wasn't found, so the index uses Indicat's plain style. "
+                      "Choose the template again in Edit > Preferences.")
+    p = normal_template()
+    if p is not None:
+        return p, None
+    return None, ("Word's Normal template wasn't found on this computer, so the index uses Indicat's plain "
+                  "style. To use another template, choose it in Edit > Preferences.")
+
+
+def _open_template(path: Path):
+    """A python-docx Document made from a .dotx/.dotm/.docx/.docm, with its text, macros and
+    building blocks left out: only its styles, page setup, headers and footers are kept."""
+    from docx import Document
+    from docx.oxml.ns import qn
+    from lxml import etree
+    buf = io.BytesIO()
+    with zipfile.ZipFile(path) as zin, zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "[Content_Types].xml":
+                for t in _MAIN_TYPES:
+                    data = data.replace(t, _DOC_TYPE)
+            elif item.filename.startswith("word/_rels/") and item.filename.endswith(".rels"):
+                root = etree.fromstring(data)
+                for rel in list(root):
+                    if (rel.get("Type") or "").endswith(_DROP_RELS):
+                        root.remove(rel)
+                data = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+            zout.writestr(item, data)
+    doc = Document(io.BytesIO(buf.getvalue()))
+    body = doc.element.body
+    for child in list(body):
+        if child.tag != qn("w:sectPr"):
+            body.remove(child)
+    return doc
+
+
+def write_docx(path: Path, sections: list[Section], opts, font: str | None,
+               template: Path | None = None) -> list[str]:
+    """Write the index as .docx.  With a template, the index starts from it and Indicat's
+    settings (columns, right-aligned numbers and leader, and `font` unless it is None) are
+    applied on top; everything else (sizes, indents, spacing, page setup) is the template's.
+    Returns notes for the user."""
     from docx import Document
     from docx.enum.section import WD_SECTION
+    from docx.enum.style import WD_STYLE_TYPE
     from docx.enum.text import WD_COLOR_INDEX, WD_TAB_ALIGNMENT, WD_TAB_LEADER
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
     from docx.shared import Inches, Pt
 
-    doc = Document()
+    msgs: list[str] = []
+    doc = None
+    if template is not None:
+        try:
+            doc = _open_template(template)
+        except Exception as exc:
+            msgs.append(f"The template “{template.name}” couldn't be used ({exc}), so the index uses "
+                        "Indicat's plain style.")
+    plain = doc is None
+    if plain:
+        doc = Document()
+        font = font or "Times New Roman"
     st = doc.styles
     normal = st["Normal"]
-    normal.font.name = font
-    normal.font.size = Pt(10)
-    rpr = normal.element.get_or_add_rPr()
-    rf = rpr.find(qn("w:rFonts"))
-    if rf is None:
-        rf = OxmlElement("w:rFonts")
-        rpr.insert(0, rf)
-    for a in ("w:ascii", "w:hAnsi", "w:cs", "w:eastAsia"):
-        rf.set(qn(a), font)
-    normal.paragraph_format.space_after = Pt(0)
-    for hn in ("Heading 1", "Heading 2"):
-        st[hn].font.name = font
-        st[hn].font.color.rgb = None
+
+    def set_font(style):
+        style.font.name = font
+        rpr = style.element.get_or_add_rPr()
+        rf = rpr.find(qn("w:rFonts"))
+        if rf is None:
+            rf = OxmlElement("w:rFonts")
+            rpr.insert(0, rf)
+        for a in list(rf.attrib):            # theme fonts would win over the names
+            if a.endswith("Theme"):
+                del rf.attrib[a]
+        for a in ("w:ascii", "w:hAnsi", "w:cs", "w:eastAsia"):
+            rf.set(qn(a), font)
+
+    def heading_style(n):
+        try:
+            return st[f"Heading {n}"]
+        except KeyError:                       # templates often keep the headings latent only
+            h = st.add_style(f"Heading {n}", WD_STYLE_TYPE.PARAGRAPH, builtin=True)
+            h.base_style = normal
+            h.next_paragraph_style = normal
+            h.font.bold = True
+            h.font.size = Pt(14 if n == 1 else 11)
+            h.paragraph_format.space_before = Pt(12 if n == 1 else 6)
+            h.paragraph_format.space_after = Pt(6 if n == 1 else 0)
+            h.paragraph_format.keep_with_next = True
+            return h
+
+    if plain:
+        set_font(normal)
+        normal.font.size = Pt(10)
+        normal.paragraph_format.space_after = Pt(0)
+    elif font:
+        set_font(normal)
+    for hn in (1, 2):
+        h = heading_style(hn)
+        if plain:
+            h.font.name = font
+            h.font.color.rgb = None
+        elif font:
+            set_font(h)
     sec0 = doc.sections[0]
     text_w = sec0.page_width - sec0.left_margin - sec0.right_margin
     cols = max(1, int(opts.columns or 1))
@@ -195,16 +306,23 @@ def write_docx(path: Path, sections: list[Section], opts, font: str) -> None:
     def style(name, left, bold=False):
         try:
             s = st[name]
+            new = False
         except KeyError:
-            from docx.enum.style import WD_STYLE_TYPE
             s = st.add_style(name, WD_STYLE_TYPE.PARAGRAPH)
             s.base_style = normal
+            new = True
         pf = s.paragraph_format
-        pf.left_indent = Inches(left)
-        pf.first_line_indent = Inches(-0.2)
-        pf.space_after = Pt(0)
-        s.font.bold = bold
+        if plain or new:
+            pf.left_indent = Inches(left)
+            pf.first_line_indent = Inches(-0.2)
+            pf.space_after = Pt(0)
+            s.font.bold = bold
+        if font and not plain:
+            set_font(s)
         if tab:
+            for i in reversed(range(len(pf.tab_stops))):      # the template's own right tab gives way
+                if pf.tab_stops[i].alignment == WD_TAB_ALIGNMENT.RIGHT:
+                    del pf.tab_stops[i]
             pf.tab_stops.add_tab_stop(col_w - Inches(0.01), WD_TAB_ALIGNMENT.RIGHT, leader)
         return s
 
@@ -252,6 +370,7 @@ def write_docx(path: Path, sections: list[Section], opts, font: str) -> None:
                 for s in e.subs:
                     para(entry_runs(s, opts.separator), s2)
     doc.save(path)
+    return msgs
 
 
 # ---------------------------------------------------------------------------

@@ -284,6 +284,7 @@ class DocxPackage:
         self.existing_xe = 0
         self.existing_index = 0
         self.tracked_changes = 0
+        self.extra_parts: dict[str, bytes] = {}      # other parts to replace on save
         self._read()
 
     def _theme_fonts(self) -> dict:
@@ -364,6 +365,7 @@ class DocxPackage:
         out_path = Path(out_path)
         tmp = out_path.with_suffix(".tmp")
         repl = {PARTS[k]: _ser(t) for k, t in self.trees.items()}
+        repl.update(self.extra_parts)
         if self.styles_tree is not None:
             repl["word/styles.xml"] = _ser(self.styles_tree)
         with zipfile.ZipFile(self.path) as zin, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
@@ -373,6 +375,24 @@ class DocxPackage:
                     data = zin.read(item.filename)
                 zout.writestr(item, data)
         shutil.move(str(tmp), str(out_path))
+
+
+def keep_own_styles(pkg: DocxPackage) -> bool:
+    """Turn off "Automatically update document styles" (w:linkStyles) in the copy, so that Word
+    doesn't copy the attached template's styles over the index styles Indicat set when it opens the
+    copy.  Returns True if it was on."""
+    try:
+        with zipfile.ZipFile(pkg.path) as z:
+            data = z.read("word/settings.xml")
+    except KeyError:
+        return False
+    root = etree.fromstring(data)
+    found = root.findall(w("linkStyles"))
+    for el in found:
+        root.remove(el)
+    if found:
+        pkg.extra_parts["word/settings.xml"] = _ser(root.getroottree())
+    return bool(found)
 
 
 def _ser(tree) -> bytes:

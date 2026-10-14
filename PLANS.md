@@ -1,9 +1,18 @@
 # Plans
 
-Working list for the next version. Nothing here is built yet; building starts once the list
-has a handful of items and Beaux says go.
+Working list for the next version. Building starts once the list has a handful of items and
+Beaux says go.
 
-## 0.4.1
+## 0.4.2
+
+(nothing yet)
+
+## 0.4.1 (built 2026-10-14; see CHANGELOG.md)
+
+All four items below are built and tested here; what still needs real Word, InDesign and
+Windows is listed in CLAUDE.md under "Not yet checked". Built as planned, except: in item 4,
+index 3 got no change (Indicat never writes a third level), and the leader is taken from the
+'index 1' style, so it also holds for static copies.
 
 ### 1. Update in place
 
@@ -107,10 +116,6 @@ dots) and `RightAlignPageNumbers` from the book's settings; give index 3 the sam
 Can't be tested here: needs a run in real Word, ideally on the document where it happened.
 If Word still overrides it after this, the fall-back is a note in the build log ("Your
 document's styles set the leader; change it in Word: References > Insert Index > Tab leader").
-
-### 5. …
-
-(more updates, improvements and fixes to add here)
 
 ## Parked: a Mac version (for a contributor with a Mac)
 

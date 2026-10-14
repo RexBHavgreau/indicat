@@ -17,7 +17,7 @@ from . import APP_NAME, APP_TITLE, AUTHOR, REPO_URL, SUPPORT_URL, __version__
 from . import settings as SET
 from . import terms as T
 from . import updates
-from .dialogs import AddRefDialog, EditDialog, SettingsDialog, TermEditDialog
+from .dialogs import AddRefDialog, EditDialog, SettingsDialog, TermEditDialog, UpdateDialog
 from .parser import INDEXED_STATUSES, STATUS_LABELS
 from .pipeline import (FINAL_MODES, FOOTNOTE_MODES, LIVE_MODES, SEPARATORS, TERM_LABELS, BuildOptions,
                        build, check_custom_separator, find_text, include_by_default, make_static,
@@ -295,6 +295,8 @@ class App(tk.Tk):
             self._say(SET.migration_note)
         self.after(100, self._poll)
         self.after(500, self._tick)
+        if updates.can_install():
+            self.after(1000, self._offer_cleanup)
         if self.settings.get("check_updates", True) and updates.configured():
             self.after(1500, lambda: self._check_updates(True))
         if not self.settings.get("welcome_done"):
@@ -1211,8 +1213,12 @@ class App(tk.Tk):
         def done(r):
             st = r.get("status")
             if st == "newer":
-                if messagebox.askyesno(APP_NAME, f"Version {r['latest']} is available (you have "
-                                       f"{__version__}). Open the download page?"):
+                can = updates.can_install() and bool(r.get("asset"))
+                d = UpdateDialog(self, r["latest"], __version__, r.get("notes", ""), can)
+                self.wait_window(d)
+                if d.result == "install":
+                    self._install_update(r)
+                elif d.result == "page":
                     import webbrowser
                     webbrowser.open(r.get("url") or "")
             elif not quiet:
@@ -1226,6 +1232,81 @@ class App(tk.Tk):
             threading.Thread(target=lambda: self.q.put(("call", done, work())), daemon=True).start()
         else:
             self._run(work, done)
+
+    def _install_update(self, r):
+        if self.busy:
+            messagebox.showinfo(APP_NAME, "Indicat is busy. When it has finished, choose Help > Check for "
+                                "updates to install the new version.")
+            return
+        latest = r["latest"]
+        self._say(f"Downloading Indicat {latest}…")
+
+        def work():
+            try:
+                path, moved = updates.install(r["asset"], latest, progress=self.progress_cb)
+                return {"path": path, "moved": moved}
+            except updates.UpdateError as exc:
+                return {"error": str(exc)}
+
+        def done(res):
+            if res.get("error"):
+                self._say(res["error"])
+                messagebox.showwarning(APP_NAME, res["error"])
+                return
+            path = res["path"]
+            if res["moved"]:
+                here = updates.running_exe().parent
+                self._say(f"Saved {path}")
+                messagebox.showinfo(APP_NAME, (
+                    f"Indicat can't save files in {here}, so Indicat {latest} was saved in your Downloads "
+                    f"folder instead:\n\n{path}\n\nMove it to where you keep Indicat, then start it."))
+                open_folder(str(path.parent))
+                return
+            self._say(f"Indicat {latest} is installed: {path}")
+            if messagebox.askyesno(APP_NAME, f"Indicat {latest} is installed in {path.parent}.\n\n"
+                                   "Start it now and close this version?"):
+                try:
+                    updates.launch(path)
+                except OSError as exc:
+                    messagebox.showwarning(APP_NAME, f"Couldn't start {path.name} ({exc}). Start it from "
+                                           f"{path.parent}.")
+                    return
+                self.destroy()
+        self._run(work, done, "update")
+
+    def _offer_cleanup(self):
+        """At the start of a new version: offer to delete older copies in this folder and to point
+        shortcuts to this one.  A copy the user chose to keep isn't asked about again."""
+        exe = updates.running_exe()
+        kept = set(self.settings.get("kept_old_versions") or [])
+        olds = [p for p in updates.older_copies(exe.parent, exe) if p.name not in kept]
+        if not olds:
+            return
+        names = ", ".join(p.name for p in olds)
+        one = len(olds) == 1
+        if not messagebox.askyesno(APP_NAME, (
+                f"This is Indicat {__version__}. The older version{'' if one else 's'} in this folder "
+                f"({names}) can be deleted now, and shortcuts that open {'it' if one else 'them'} changed to "
+                f"open this version. Your settings are kept.\n\nDelete the old version{'' if one else 's'} "
+                "and update the shortcuts?")):
+            self.settings["kept_old_versions"] = sorted(kept | {p.name for p in olds})
+            save_settings(self.settings)
+            return
+
+        def work():
+            n = updates.retarget_shortcuts(olds, exe)
+            deleted, left = updates.delete_old(olds)
+            return n, deleted, left
+
+        def done(r):
+            n, deleted, left = r
+            if deleted:
+                self._say("Deleted " + ", ".join(p.name for p in deleted) + ".")
+            self._say(f"Shortcuts changed to open this version: {n}.")
+            if left:
+                messagebox.showwarning(APP_NAME, "Couldn't delete " + ", ".join(p.name for p in left) +
+                                       " (it may still be open). Close it and delete it by hand.")
+        threading.Thread(target=lambda: self.q.put(("call", done, work())), daemon=True).start()
 
     def _static(self):
         d = StaticDialog(self, self.settings.get("last_indexed", ""), self.word)

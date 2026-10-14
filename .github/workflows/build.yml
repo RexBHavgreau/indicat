@@ -1,4 +1,4 @@
-# Builds the Windows app and the InDesign script.
+# Builds the Windows app ("Indicat X.Y.Z.exe") and checks the InDesign script it generates.
 # Runs on every pushed tag like v0.3.0 (and publishes a GitHub Release),
 # or by hand from the Actions tab ("Run workflow").
 name: Build
@@ -39,15 +39,27 @@ jobs:
           python tests/test_terms.py
           python tests/test_note_matching.py
           python tests/test_pdf.py
+          python tests/test_styles.py
+          python tests/test_updates.py
           python tests/js_parity.py
           python tests/terms_parity.py
           python tests/word_mock_test.py
           python tests/indesign_mock_test.py
 
+      - name: Read the version (and check it matches the tag)
+        shell: bash
+        run: |
+          v=$(python -c "import indicat; print(indicat.__version__)")
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+          if [[ "$GITHUB_REF" == refs/tags/v* && "${GITHUB_REF#refs/tags/v}" != "$v" ]]; then
+            echo "The tag ${GITHUB_REF#refs/tags/} doesn't match the version in indicat/__init__.py ($v)."
+            exit 1
+          fi
+
       - name: Build the .exe
         run: >
           pyinstaller --noconfirm --clean --onefile --windowed
-          --name Indicat
+          --name "Indicat ${{ env.VERSION }}"
           --icon indicat/assets/indicat.ico
           --collect-data docx
           --hidden-import win32com.client --hidden-import pythoncom
@@ -56,15 +68,17 @@ jobs:
           --add-data "indicat/assets;indicat/assets"
           run_app.py
 
-      - name: Write the default InDesign script
-        run: python -m indicat jsx "dist/Indicat for InDesign.jsx" --lang en
+      - name: Check that Indicat writes the InDesign script (not published; users make their own)
+        run: |
+          New-Item -ItemType Directory -Force checks | Out-Null
+          python -m indicat jsx "checks/Indicat for InDesign.jsx" --lang en
 
       - name: Check the .exe carries its data (dictionary forms, verse counts)
         shell: bash
         run: |
           python - <<'PY'
           from PyInstaller.archive.readers import CArchiveReader
-          names = " ".join(str(k) for k in CArchiveReader("dist/Indicat.exe").toc)
+          names = " ".join(str(k) for k in CArchiveReader("dist/Indicat ${{ env.VERSION }}.exe").toc)
           for need in ("lexicon.json", "verses.json", "driver.js"):
               assert need in names, need + " missing from the .exe"
           print("data files present")
@@ -73,7 +87,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Indicat
-          path: dist/*
+          path: |
+            dist/*
+            checks/*
 
       - name: Publish the release
         if: startsWith(github.ref, 'refs/tags/v')

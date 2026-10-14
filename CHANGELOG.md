@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.4.1 — 2026-10-14
+
+**New**
+
+* **Install updates in place.** When a newer version is out, Indicat offers to
+  download it into the same folder as the version you're running, checks that
+  it arrived intact, and offers to start it. If that folder can't be written to,
+  it goes to your Downloads folder instead. The program now carries its version
+  in its name ("Indicat 0.4.1.exe"), so a new version never overwrites the
+  running one.
+* At its first start, a new version offers to **delete the older copies** in its
+  folder and to point desktop, Start menu and taskbar shortcuts to itself.
+* **A template for Word indexes made from a PDF** (Edit > Preferences): Word's
+  Normal template by default, another template of your choice, or Indicat's
+  plain style. The index takes the template's page size, margins and styles;
+  Indicat's settings (columns, right-aligned page numbers and leader, index
+  font) still apply.
+
+**Fixed**
+
+* "Right-aligned, no leader" could come out with a dot leader in Word: Word
+  gave the rebuilt index its own leader (dots) over Indicat's index styles. The
+  index now keeps the leader you chose, also in static copies.
+* The indexed copy turns off "Automatically update document styles", which let
+  the document's template replace Indicat's index styles when Word opened it
+  (your original document is not changed).
+
+**Changed**
+
+* Releases no longer include "Indicat for InDesign.jsx"; make the script from
+  the app (Tools > Export InDesign script), with your settings. The release
+  build still checks that Indicat writes it.
+
 ## 0.4.0 — 2026-10-12
 
 **New**

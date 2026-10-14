@@ -292,6 +292,20 @@ class SettingsDialog(tk.Toplevel):
         ttk.Label(pb, foreground="#555", wraplength=860, justify="left", text=(
             "Acrobat and Acrobat Reader, SumatraPDF, Foxit, Edge, Chrome and Firefox can open a PDF at a "
             "given page. With any other program the PDF opens and Indicat tells you the page.")).pack(anchor="w")
+        tb = ttk.LabelFrame(f, text="Template for Word indexes made from a PDF", padding=(10, 6))
+        tb.pack(fill="x", pady=(10, 0))
+        self.g_tmpl = tk.StringVar(value=self.s.get("pdf_template", "normal"))
+        ttk.Radiobutton(tb, text="Word's Normal template", value="normal", variable=self.g_tmpl).pack(anchor="w")
+        row = ttk.Frame(tb)
+        row.pack(fill="x", pady=2)
+        ttk.Radiobutton(row, text="This template:", value="file", variable=self.g_tmpl).pack(side="left")
+        self.g_tmpl_path = tk.StringVar(value=self.s.get("pdf_template_path", ""))
+        ttk.Entry(row, textvariable=self.g_tmpl_path, width=60).pack(side="left", padx=6)
+        ttk.Button(row, text="Browse…", command=self._g_tmpl).pack(side="left")
+        ttk.Radiobutton(tb, text="Indicat's plain style", value="plain", variable=self.g_tmpl).pack(anchor="w")
+        ttk.Label(tb, foreground="#555", wraplength=860, justify="left", text=(
+            "The index takes the template's page size, margins and styles. Indicat's own settings still "
+            "apply: columns, right-aligned page numbers and leader, and the index font.")).pack(anchor="w", pady=(4, 0))
         ub = ttk.LabelFrame(f, text="Updates", padding=(10, 6))
         ub.pack(fill="x", pady=(10, 0))
         self.g_upd = tk.BooleanVar(value=self.s.get("check_updates", True))
@@ -302,6 +316,13 @@ class SettingsDialog(tk.Toplevel):
         if d:
             self.g_folder.set(d)
             self.g_loc.set("fixed")
+
+    def _g_tmpl(self):
+        f = filedialog.askopenfilename(parent=self, filetypes=[
+            ("Word templates and documents", "*.dotx *.dotm *.docx *.docm"), ("All files", "*.*")])
+        if f:
+            self.g_tmpl_path.set(f)
+            self.g_tmpl.set("file")
 
     def _g_prog(self):
         f = filedialog.askopenfilename(parent=self, filetypes=[("Programs", "*.exe"), ("All files", "*.*")])
@@ -319,6 +340,11 @@ class SettingsDialog(tk.Toplevel):
         self.s["pdf_viewer"] = self.viewer_labels.get(self.g_viewer.get(), "auto")
         self.s["pdf_viewer_path"] = self.g_viewer_path.get().strip()
         self.s["check_updates"] = bool(self.g_upd.get())
+        tmpl = self.g_tmpl.get()
+        if tmpl == "file" and not self.g_tmpl_path.get().strip():
+            tmpl = "normal"
+        self.s["pdf_template"] = tmpl
+        self.s["pdf_template_path"] = self.g_tmpl_path.get().strip()
 
     # -- abbreviations ------------------------------------------------------------
     def _tab_abbr(self, nb):
@@ -1095,4 +1121,44 @@ class TermEditDialog(tk.Toplevel):
                                 old.key if old is not None else T.fold_str(h))
         if old is not None and h == old.heading:
             self.result.sort = old.sort
+        self.destroy()
+
+
+# ---------------------------------------------------------------------------
+class UpdateDialog(tk.Toplevel):
+    """A newer version is out: install it next to this one, open the download page, or not now.
+    `result` is "install", "page" or None."""
+
+    def __init__(self, master, latest: str, current: str, notes: str, can_install: bool):
+        super().__init__(master)
+        self.title("A new version of Indicat")
+        self.transient(master)
+        self.result = None
+        frm = ttk.Frame(self, padding=14)
+        frm.pack(fill="both", expand=True)
+        msg = f"Indicat {latest} is available (you have {current})."
+        if can_install:
+            msg += (" Indicat can download it into the same folder as this version; your settings "
+                    "carry over.")
+        ttk.Label(frm, text=msg, wraplength=560, justify="left").pack(anchor="w")
+        if notes.strip():
+            ttk.Label(frm, text="What's new:").pack(anchor="w", pady=(10, 2))
+            t = tk.Text(frm, height=12, width=72, wrap="word", font=("Segoe UI", 9))
+            t.insert("1.0", notes.strip())
+            t.configure(state="disabled")
+            t.pack(fill="both", expand=True)
+        btns = ttk.Frame(frm)
+        btns.pack(fill="x", pady=(12, 0))
+        ttk.Button(btns, text="Not now", command=self.destroy).pack(side="right")
+        ttk.Button(btns, text="Open the download page", command=lambda: self._done("page")).pack(
+            side="right", padx=6)
+        if can_install:
+            b = ttk.Button(btns, text=f"Install {latest}", command=lambda: self._done("install"))
+            b.pack(side="right")
+            b.focus_set()
+        center(self, master)
+        self.grab_set()
+
+    def _done(self, what):
+        self.result = what
         self.destroy()

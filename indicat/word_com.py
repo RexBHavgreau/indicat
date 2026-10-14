@@ -26,6 +26,57 @@ WD_YELLOW = 7            # wdYellow
 WD_ALERTS_NONE = 0
 WD_PRINT_VIEW = 3        # wdPrintView
 WD_FIELD_INDEX_ENTRY = 4  # wdFieldIndexEntry (XE)
+WD_STYLE_INDEX = (-11, -12, -13)   # wdStyleIndex1..3 (built-in, so it works in any UI language)
+WD_ALIGN_TAB_RIGHT = 2   # wdAlignTabRight
+
+
+def _index_leader(doc):
+    """The leader of the right tab in the 'index 1' style (set by Indicat from the book's
+    settings), or None when the style has no right tab."""
+    try:
+        stops = doc.Styles(WD_STYLE_INDEX[0]).ParagraphFormat.TabStops
+        for i in range(1, stops.Count + 1):
+            t = stops.Item(i)
+            if t.Alignment == WD_ALIGN_TAB_RIGHT:
+                return t.Leader
+    except Exception:
+        pass
+    return None
+
+
+def _update_indexes(doc) -> None:
+    """Update every field and index without letting Word change the tab leader.
+
+    Word's Index object has a leader of its own (dots unless told otherwise), which it applies
+    when it rebuilds an index with right-aligned page numbers, whatever the index styles say.
+    So give each such index the leader of the 'index 1' style first, and afterwards put the
+    styles' leader back if Word changed it."""
+    leader = _index_leader(doc)
+    if leader is not None:
+        try:
+            for i in range(1, doc.Indexes.Count + 1):
+                ix = doc.Indexes.Item(i)
+                if ix.RightAlignPageNumbers:
+                    ix.TabLeader = leader
+        except Exception:
+            pass
+    doc.Fields.Update()
+    try:
+        for i in range(1, doc.Indexes.Count + 1):
+            doc.Indexes.Item(i).Update()
+    except Exception:
+        pass
+    if leader is None:
+        return
+    for sid in WD_STYLE_INDEX:
+        try:
+            stops = doc.Styles(sid).ParagraphFormat.TabStops
+            for i in range(1, stops.Count + 1):
+                t = stops.Item(i)
+                if t.Alignment == WD_ALIGN_TAB_RIGHT and t.Leader != leader:
+                    t.Leader = leader
+        except Exception:
+            pass
 
 
 def available() -> bool:
@@ -159,14 +210,12 @@ def paginate(path: Path, occs, opts, log=print, final_path: Path | None = None) 
         doc.Bookmarks.ShowHidden = True
         log("Updating fields (tables of contents and the index)…")
         doc.Repaginate()
-        doc.Fields.Update()
         try:
             for i in range(1, doc.TablesOfContents.Count + 1):
                 doc.TablesOfContents.Item(i).Update()
-            for i in range(1, doc.Indexes.Count + 1):
-                doc.Indexes.Item(i).Update()
         except Exception:
             pass
+        _update_indexes(doc)
         doc.Repaginate()
 
         log("Reading page and note numbers…")
@@ -619,9 +668,7 @@ def make_static_copy(path: Path, out_path: Path, mode: str = "auto", marker: str
         doc.Repaginate()
         if update_first:
             log("Updating the index from the document…")
-            doc.Fields.Update()
-            for i in range(1, doc.Indexes.Count + 1):
-                doc.Indexes.Item(i).Update()
+            _update_indexes(doc)
             doc.Repaginate()
         fields = _index_fields(doc)
         if not fields:
