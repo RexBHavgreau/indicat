@@ -5,9 +5,39 @@ Beaux says go.
 
 ## 0.4.2
 
-(nothing yet)
+### 1. PDF route: two-column pages (built 2026-10-16, on the branch)
 
-## 0.4.1 (built 2026-10-14; see CHANGELOG.md)
+**Found on:** BiblicalMissionsUS textbook (PDF, 2026-10-16). Indicat reads each PDF page line by
+line across its whole width (`pdf_io._lines_of` groups characters by baseline only), so on a
+page set in two columns, or a PDF exported as two-page spreads, it reads a line of the left
+column, then the same line of the right column. Effects in that book:
+
+- References read with the wrong book: "Ps 85:1–3; cf. Rom 5:1" in one column, "85:4–7" in the
+  next → "Romans 85:4–7, impossible" (page 880); "vv. 3–4" given to Luke.
+- 940 "impossible chapter/verse" and many unindexed "book from context" rows; contexts that mix
+  sentences from both columns; page breaks in the middle of lines ("the‖880‖ obedient", 226 rows).
+- Notes from later pages filed as "Footnote 4" of page 8, so the review list's page order looks
+  wrong (8, 11, 12, 14, then 9).
+
+**Built:** `pdf_io._gutter` finds the strip between the columns (most lines don't cross it,
+many have text on both sides); `_keep_whole` leaves lines that cross it and the smaller type
+below the columns (footnotes) whole; `_column_order` reads left then right between full-width
+lines; `_assemble` runs a paragraph on from the left column to the right. Text outside the trim
+(or bleed) box is ignored (printer's marks, slug line), so running feet are found again. On
+the 9 sample pages: impossible references 28 → 1 (the book's own "2 Pet 3:14–19"). Spreads (two
+pages on one PDF page) are not handled yet.
+
+**Proposed at first:** find the gutter: a vertical strip that no line crosses on most of the page,
+then read the left column top to bottom, then the right. A spread (two folios on one PDF page)
+becomes two printed pages, each with its own folio. Footnotes are looked for at the foot of each
+column. Tests: two-column and spread pages made with reportlab in `test_pdf.py`, plus the real
+book once Beaux sends the PDF (or pages 7–14 and 880).
+
+### 2. …
+
+(more to add)
+
+## 0.4.1 (released; see CHANGELOG.md)
 
 All items below are built and tested here; what still needs real Word, InDesign and
 Windows is listed in CLAUDE.md under "Not yet checked". Built as planned, except: in item 4,
@@ -116,34 +146,6 @@ dots) and `RightAlignPageNumbers` from the book's settings; give index 3 the sam
 Can't be tested here: needs a run in real Word, ideally on the document where it happened.
 If Word still overrides it after this, the fall-back is a note in the build log ("Your
 document's styles set the leader; change it in Word: References > Insert Index > Tab leader").
-
-### 5. PDF route: two-column pages (added 2026-10-16, built)
-
-**Found on:** BiblicalMissionsUS textbook (PDF, 2026-10-16). Indicat reads each PDF page line by
-line across its whole width (`pdf_io._lines_of` groups characters by baseline only), so on a
-page set in two columns, or a PDF exported as two-page spreads, it reads a line of the left
-column, then the same line of the right column. Effects in that book:
-
-- References read with the wrong book: "Ps 85:1–3; cf. Rom 5:1" in one column, "85:4–7" in the
-  next → "Romans 85:4–7, impossible" (page 880); "vv. 3–4" given to Luke.
-- 940 "impossible chapter/verse" and many unindexed "book from context" rows; contexts that mix
-  sentences from both columns; page breaks in the middle of lines ("the‖880‖ obedient", 226 rows).
-- Notes from later pages filed as "Footnote 4" of page 8, so the review list's page order looks
-  wrong (8, 11, 12, 14, then 9).
-
-**Built:** `pdf_io._gutter` finds the strip between the columns (most lines don't cross it,
-many have text on both sides); `_keep_whole` leaves lines that cross it and the smaller type
-below the columns (footnotes) whole; `_column_order` reads left then right between full-width
-lines; `_assemble` runs a paragraph on from the left column to the right. Text outside the trim
-(or bleed) box is ignored (printer's marks, slug line), so running feet are found again. On
-the 9 sample pages: impossible references 28 → 1 (the book's own "2 Pet 3:14–19"). Spreads (two
-pages on one PDF page) are not handled yet.
-
-**Proposed at first:** find the gutter: a vertical strip that no line crosses on most of the page,
-then read the left column top to bottom, then the right. A spread (two folios on one PDF page)
-becomes two printed pages, each with its own folio. Footnotes are looked for at the foot of each
-column. Tests: two-column and spread pages made with reportlab in `test_pdf.py`, plus the real
-book once Beaux sends the PDF (or pages 7–14 and 880).
 
 ## Parked: a Mac version (for a contributor with a Mac)
 
