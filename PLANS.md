@@ -38,14 +38,21 @@ book once Beaux sends the PDF (or pages 7–14 and 880).
 **Wanted:** index only part of a PDF (a chapter, the body without the front or back matter).
 Not built before 2026-10-16: it isn't in the code, on any branch, or in an issue.
 
-**Proposed:** a "Pages" box next to the PDF, blank for the whole book, taking printed page
-numbers as they appear in the book ("1–350", "xi–xx, 1–350", "45"). Pages outside the range
-aren't scanned; notes and paragraphs that run on into the range from a page before it are still
-read where they continue. The range is kept with the book's settings, and shown in the proof
-list and the log.
+**Decided (2026-10-16):**
 
-**Questions for Beaux:** printed page numbers, PDF page numbers (1 = the PDF's first page), or
-either? Also for Word manuscripts, or PDFs only?
+- PDFs only (a Word manuscript has no pages until Word lays it out).
+- A "Pages" box next to the PDF, blank for the whole book. It takes **PDF page numbers**
+  (1 = the PDF's first page, as a PDF reader shows them), because every page has one, they
+  never repeat, and they don't depend on Indicat reading the folios: unnumbered front matter
+  (title, copyright, endorsements) and roman pages can be chosen as easily as the rest.
+- Several ranges allowed: "9–14, 21–880".
+- Indicat echoes the printed pages the range covers ("PDF pages 9–880 = printed xi–862"), so a
+  wrong number shows before the scan.
+- Pages outside the range aren't scanned; a paragraph or note that runs on into the range from
+  the page before is still read where it continues. The range is kept with the book's settings
+  and shown in the log and the proofreading list.
+- The book's own index is already left out (found by its heading), so the range is mainly for
+  front matter and other back matter.
 
 ### 3. …
 
