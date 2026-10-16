@@ -18,8 +18,10 @@ GPL-3.0, "Indicat, created by Beaux Hargrove". Repo: github.com/RexBHavgreau/ind
 
 - Version is in `indicat/__init__.py`; add a dated entry at the top of `CHANGELOG.md`.
 - Pushing a tag `vX.Y.Z` runs `.github/workflows/build.yml` on Windows: all tests, the .exe
-  (PyInstaller), the default InDesign script, a check that the .exe carries its data files, and
-  a GitHub Release. The workflow can also be started by hand (workflow_dispatch) on any branch
+  (PyInstaller, named "Indicat X.Y.Z.exe"; the tag must match `__version__`), a check that
+  Indicat writes the InDesign script (not published), a check that the .exe carries its data
+  files, and a GitHub Release with the .exe only. GitHub writes spaces in release file names as
+  dots ("Indicat.0.4.1.exe"); the updater saves it as "Indicat 0.4.1.exe". The workflow can also be started by hand (workflow_dispatch) on any branch
   to check a build without releasing.
 - Settings carry over between versions (`%APPDATA%\Indicat\settings.json`). When the layout of
   settings changes, bump `SETTINGS_VERSION` and add a step to `migrate()` in
@@ -41,6 +43,7 @@ GPL-3.0, "Indicat, created by Beaux Hargrove". Repo: github.com/RexBHavgreau/ind
 | `indicat/jsx.py`, `indicat/js/*.js` | The InDesign script: Python builds a DATA block, then parser.js, terms.js, driver.js |
 | `indicat/data/` | `lexicon.json` (dictionary forms), `verses.json` (verse counts); built by `tools/build_data.py`, committed |
 | `indicat/cli.py` | Command line (`python -m indicat scan/build/static/jsx`) |
+| `indicat/updates.py` | Update check, install beside the running copy, old copies and shortcuts |
 | `tests/` | See below |
 
 ## The one rule that matters most
@@ -65,6 +68,8 @@ python tests/test_parser.py          # Scripture parser, all languages
 python tests/test_terms.py           # word indexes, dictionary forms, term sets, settings migration
 python tests/test_note_matching.py   # note page numbers (n#) and Chicago-style See / See also
 python tests/test_pdf.py             # the PDF route (needs reportlab)
+python tests/test_styles.py          # template for PDF indexes; the copy's index styles
+python tests/test_updates.py         # the updater (download, checks, fall-backs, old copies, shortcuts)
 python tests/js_parity.py [Book.docx ...]     # Python vs InDesign parser (needs Node.js)
 python tests/terms_parity.py [Book.docx ...]  # Python vs InDesign word/term engine
 python tests/word_mock_test.py       # Word automation against a fake Word
@@ -95,7 +100,14 @@ and for the PDF route (save it as PDF and scan that).
 - The user's original document is never modified; outputs are copies.
 - User-facing text is plain and specific (say what to do, not what went wrong internally).
 
-## Not yet checked in the real programs (as of 0.4.0)
+## Not yet checked in the real programs (as of 0.4.1)
+
+- 0.4.1: the update in place on Windows (0.4.1 updating to a later release): download, start
+  the new version, delete the old one, shortcuts and taskbar pins retargeted (Windows may only
+  show a changed pin after signing out); SmartScreen/antivirus on the downloaded .exe.
+- 0.4.1: the leader fix in real Word (`word_com._update_indexes` sets `Index.TabLeader` from the
+  'index 1' style before updating, and puts the styles' leader back after); a PDF index from a
+  real Normal.dotm and from a book template.
 
 - Word: italic "See" in the live index; Chicago-style cross-references in the finished copy; the
   note-page fixes for term sets (notes running onto the next page, endnotes, a term twice in one
@@ -109,6 +121,8 @@ and for the PDF route (save it as PDF and scan that).
 
 ## Ideas parked for later
 
-- Live .odt indexing (LibreOffice users export to PDF and use the PDF route for now).
+See also `PLANS.md` (the working list, a Mac version for a contributor, and what was decided
+against, e.g. live .odt indexing).
+
 - More languages; Dead Sea Scrolls, Josephus, Philo, Rabbinic, Pseudepigrapha, Apostolic Fathers
   citation sets; page ranges for term-set entries.

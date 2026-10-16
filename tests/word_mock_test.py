@@ -3,7 +3,8 @@
     python tests/word_mock_test.py
 
 Checks that note page numbers in the finished indexes are completed (33n2)
-or highlighted, for a Scripture index and for a word index with subentries.
+or highlighted, for a Scripture index and for a word index with subentries,
+and that updating the index keeps the tab leader of the index styles.
 """
 import copy
 import sys
@@ -235,5 +236,48 @@ def main():
     print("OK   note page numbers completed in a Scripture index and a word index with subentries")
 
 
+def leader_test():
+    """Word gives a rebuilt index its own leader (dots); Indicat must keep the styles' leader."""
+    from indicat import word_com
+    order = []
+
+    def stop(align, leader):
+        return types.SimpleNamespace(Alignment=align, Leader=leader)
+    styles = {-11: [stop(0, 0), stop(word_com.WD_ALIGN_TAB_RIGHT, 0)],      # index 1: no leader
+              -12: [stop(word_com.WD_ALIGN_TAB_RIGHT, 0)],
+              -13: []}
+    ix_right = types.SimpleNamespace(RightAlignPageNumbers=True, TabLeader=1)
+    ix_comma = types.SimpleNamespace(RightAlignPageNumbers=False, TabLeader=1)
+
+    def upd(ix):
+        def f():
+            order.append(("update", ix.TabLeader))
+            if ix.RightAlignPageNumbers:      # what Word does: the index's leader goes into the styles
+                for sid in (-11, -12):
+                    for t in styles[sid]:
+                        if t.Alignment == word_com.WD_ALIGN_TAB_RIGHT:
+                            t.Leader = ix.TabLeader
+        return f
+    ix_right.Update, ix_comma.Update = upd(ix_right), upd(ix_comma)
+    d = Obj()
+    d.Indexes = Coll([ix_right, ix_comma])
+    d.Fields = Coll([])
+    d.Fields.Update = lambda: order.append(("fields", None))
+    d.Styles = lambda sid: types.SimpleNamespace(ParagraphFormat=types.SimpleNamespace(TabStops=Coll(styles[sid])))
+    word_com._update_indexes(d)
+    ok = (ix_right.TabLeader == 0 and ix_comma.TabLeader == 1 and order[0] == ("fields", None)
+          and all(t.Leader == 0 for sid in (-11, -12) for t in styles[sid]))
+    # 'dot' chosen: the style's dot leader is kept
+    styles[-11][1].Leader = styles[-12][0].Leader = 1
+    ix_right.TabLeader = 0
+    word_com._update_indexes(d)
+    ok = ok and ix_right.TabLeader == 1 and styles[-11][1].Leader == 1
+    if not ok:
+        print("FAIL leader", order, ix_right.TabLeader, [(t.Alignment, t.Leader) for t in styles[-11]])
+        sys.exit(1)
+    print("OK   updating the index keeps the leader of the index styles (none or dots)")
+
+
 if __name__ == "__main__":
     main()
+    leader_test()

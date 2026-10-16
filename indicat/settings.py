@@ -19,7 +19,7 @@ from .catalog import DEFAULT_SECTION_ORDER, build_catalog
 from .lang import get_language
 from .profiles import PROFILES
 
-SETTINGS_VERSION = 4          # bump when the layout of the file changes; see migrate()
+SETTINGS_VERSION = 5          # bump when the layout of the file changes; see migrate()
 
 DEFAULTS = {
     "language": "en",
@@ -49,10 +49,14 @@ DEFAULTS = {
     "pdf_viewer": "auto",                # auto | acrobat | sumatra | foxit | edge | chrome | firefox | default
     "pdf_viewer_path": "",
     "welcome_done": False,               # the first-run welcome (guided build or full window) was shown
+    # 0.4.1
+    "pdf_template": "normal",            # .docx indexes from a PDF start from: "normal" (Word's) | "file" | "plain"
+    "pdf_template_path": "",             # the template for "file"
+    "kept_old_versions": [],             # older copies of Indicat the user chose to keep (not asked again)
 }
 # keys that are personal/machine-specific and are not exported
 LOCAL_KEYS = {"last_file", "out_dir", "last_indexed", "use_word", "_migrated_from", "_settings_version",
-              "save_folder", "pdf_viewer_path", "welcome_done"}
+              "save_folder", "pdf_viewer_path", "welcome_done", "pdf_template_path", "kept_old_versions"}
 
 APP_FOLDER = "Indicat"
 # folders of earlier versions, newest first
@@ -109,6 +113,10 @@ def migrate(data: dict) -> dict:
                 for key in ("title",):
                     if ts.get(key) in (old, f"Index of {old}"):
                         ts[key] = new if ts[key] == old else f"Index of {new}"
+    if ver < 5:
+        # 0.4.1 added the template for PDF indexes and the list of kept old versions; their
+        # defaults fill in, so nothing to convert
+        pass
     data["_settings_version"] = SETTINGS_VERSION
     return data
 

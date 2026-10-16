@@ -215,15 +215,24 @@ def build_pdf(res: PL.ScanResult, opts: PL.BuildOptions, fmt: str = "docx", log=
             o.ref.cat = res.catalog
     msgs: list[str] = []
     model = SI.build_model(res, occs, opts)
+    settings = opts.settings if opts.settings is not None else res.settings
+    template = None
+    if fmt != "odt":
+        template, note = SI.template_for(settings)
+        if note:
+            msgs.append(note)
     font = res.pdf.font_name or "Times New Roman"
-    if PL.font_installed(font) is False:
+    if template is not None and settings.get("index_font", "body") == "styles":
+        font = None                          # the template's index styles keep their font
+    elif PL.font_installed(font) is False:
         msgs.append(f"The book's font (“{font}”) isn't installed on this computer, so the index is set in "
                     "Times New Roman. Change the font of the index styles to match the book.")
         font = "Times New Roman"
     if fmt == "odt":
         SI.write_odt(names["index"], model, opts, font)
     else:
-        SI.write_docx(names["index"], model, opts, font)
+        msgs.extend(SI.write_docx(names["index"], model, opts, font, template))
+        log(f"Template: {template.name if template else 'Indicat’s plain style'}.")
     log(f"Saved {names['index'].name}")
     progress(0.7, "Writing the proofreading list")
     P.write_proof(names["proof"], names["csv"], res.path, occs, opts, True, msgs + list(res.warnings), res,

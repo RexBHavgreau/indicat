@@ -31,11 +31,14 @@ Your original manuscript is never changed. The app writes:
 1. Install Python 3.10 or newer from python.org and tick **Add python.exe to PATH**.
 2. Double-click **`build_exe.bat`**. It creates a private environment in `.venv`,
    installs the requirements and PyInstaller, and builds the app.
-3. The program is `dist\Indicat.exe`. It runs on its own and can be copied to
-   any Windows PC. Other users don't need Python.
+3. The program is `dist\Indicat 0.4.1.exe` (each version carries its number in
+   its name). It runs on its own and can be copied to any Windows PC. Other
+   users don't need Python.
 
-Once the project is on GitHub, every release also has a ready-made `Indicat.exe`
-and `Indicat for InDesign.jsx` to download.
+Every release on GitHub also has a ready-made program to download (GitHub
+writes the name with dots, "Indicat.0.4.1.exe"). The InDesign script isn't in
+the release: make it from the app (**Tools > Export InDesign script**), so it
+carries your settings.
 
 ## Using it
 
@@ -117,7 +120,8 @@ Greek Words", and your term indexes. Every title can be changed in the settings.
 **Index settings and Preferences.** The settings in the main window and the
 **Index** menu belong to the book you're indexing; Indicat starts with the ones
 you used last. **Edit > Preferences** holds the rest: where results are saved,
-whether to use Word, your PDF reader, update checks, abbreviation sets and
+whether to use Word, your PDF reader, the template for indexes made from a PDF,
+update checks, abbreviation sets and
 book names, custom books, section order and titles, the word-index options and
 skip lists, your term sets, and export/import.
 
@@ -129,6 +133,11 @@ must have one: born digital (exported from Word, InDesign…), or scanned and
 from the printed page numbers, as a **Word (.docx)** or **OpenDocument (.odt)**
 file, plus the usual proofreading list. LibreOffice users can export their book
 to PDF and index it this way.
+
+The Word index starts from **Word's Normal template**, so it has your usual page
+size, margins and styles; choose another template, or Indicat's plain style, in
+**Edit > Preferences**. Indicat's own settings still apply on top: columns,
+right-aligned page numbers and their leader, and the index font.
 
 What it works out from the pages:
 
@@ -411,11 +420,21 @@ manuscripts; they must give identical results.
 
 **Help > Check for updates** (and a quiet check at start-up) compares your
 version with the latest release at
-[github.com/RexBHavgreau/indicat](https://github.com/RexBHavgreau/indicat). The
-repository must be public and have at least one published release. The
-workflow in `.github/workflows/build.yml` runs all tests, builds `Indicat.exe`
-and the InDesign script, and publishes a release whenever a tag like `v0.3.0`
-is pushed. Releases must keep that pattern (v0.3.1, v0.4.0…).
+[github.com/RexBHavgreau/indicat](https://github.com/RexBHavgreau/indicat). When
+there is a newer one, Indicat offers to **install it in the same folder** as the
+version you're running: it downloads the new program (named with its version,
+so the running one is never overwritten), checks that it arrived intact, and
+offers to start it. If the folder can't be written to (for example, under
+Program Files), the new version is saved in your Downloads folder instead.
+At its first start the new version offers to **delete the old one** and to
+point your desktop, Start menu and taskbar shortcuts to itself. Settings carry
+over either way.
+
+The repository must be public and have at least one published release. The
+workflow in `.github/workflows/build.yml` runs all tests, builds the program,
+checks that it writes the InDesign script, and publishes a release whenever a
+tag like `v0.4.1` is pushed. The tag must match the version in
+`indicat/__init__.py`, and releases must keep that pattern (v0.4.2, v0.5.0…).
 
 ## What it recognizes (Scripture)
 
@@ -445,7 +464,7 @@ Names that are also people or common words (John, James, Peter, Acts, Numbers,
 Job; Juan, Santiago…) only set the book when a number follows or when they're
 introduced by "the book of" / "Gospel of" (or the language's equivalent).
 
-## Known limits in 0.4.0
+## Known limits in 0.4.1
 
 * The indexes are added at the end of the document in their own section. Move
   them afterwards if they belong before an appendix or "About the Author".

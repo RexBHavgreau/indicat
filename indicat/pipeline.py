@@ -472,6 +472,9 @@ def build(scan_res: ScanResult, opts: BuildOptions, log=print, progress=None) ->
     if settings.get("index_font", "body") == "body":
         font = pkg.body_font()
     D.ensure_index_styles(pkg, opts.leader if opts.separator == "\t" else None, opts.columns, font)
+    if D.keep_own_styles(pkg):
+        log("Turned off “Automatically update document styles” in the copy, so the template doesn't "
+            "replace the index styles.")
     if font:
         D.set_index_heading_font(pkg, font)
         log(f"Index font: {font} (the body text font).")
