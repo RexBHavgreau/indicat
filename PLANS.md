@@ -1,7 +1,9 @@
 # Plans
 
-Working list for the next version. Building starts once the list has a handful of items and
-Beaux says go.
+Working list for the next version. A weekly routine ("Indicat weekly build", Saturdays 4:00 AM
+Central) builds every item here that is decided and not yet built, tests it, pushes the branch
+and runs the Windows build; items with open questions wait for Beaux. Merging and tagging stay
+with Beaux.
 
 ## 0.4.2
 
