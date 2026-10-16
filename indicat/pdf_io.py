@@ -62,6 +62,7 @@ class Line:
     kind: str = "body"              # body | head | foot | note | heading
     lead_sup: str = ""              # a superscript number at the very start (a note's number)
     endnote: bool = False
+    col: int = 0                    # 0 = across the page, 1 = left column, 2 = right column
 
 
 @dataclass
@@ -150,9 +151,14 @@ class PdfBook:
         info.image_area = min(1.0, area / (W * H)) if W and H else 0.0
         chars = []
         fonts = Counter()
+        keep = _trim_area(page, H)
         for c in page.chars:
             if not c.get("upright", True):
                 continue
+            if keep is not None:              # printer's marks and the slug line lie outside the trim
+                cx, cy = (float(c["x0"]) + float(c["x1"])) / 2, (float(c["top"]) + float(c["bottom"])) / 2
+                if not (keep[0] <= cx <= keep[2] and keep[1] <= cy <= keep[3]):
+                    continue
             t = c.get("text") or ""
             if not t:
                 continue
@@ -203,15 +209,32 @@ class PdfBook:
                     groups[k + 1] = g + ng
                     continue
             merged.append(g)
+        # a page set in two columns: split each line at the gutter, so the columns are read one
+        # after the other (lines that cross the gutter, such as full-width notes, stay whole)
+        gx = _gutter(merged, W)
+        cols = [0] * len(merged)
+        if gx is not None:
+            whole = _keep_whole(merged, gx)
+            split, cols = [], []
+            for g, keep in zip(merged, whole):
+                if keep:
+                    split.append(g)
+                    cols.append(0)
+                    continue
+                for side, part in ((1, [c for c in g if c.x1 <= gx]), (2, [c for c in g if c.x1 > gx])):
+                    if part:
+                        split.append(part)
+                        cols.append(side)
+            merged = split
         lines = []
-        for g in merged:
+        for g, col in zip(merged, cols):
             if not any(c.text.strip() for c in g):
                 continue
             g.sort(key=lambda c: c.x0)
             size = statistics.median([c.size for c in g if c.text.strip()])
             base = statistics.median([c.bottom for c in g if c.text.strip() and c.size >= 0.85 * size] or
                                      [max(c.bottom for c in g)])
-            ln = Line(pno, min(c.top for c in g), max(c.bottom for c in g), g[0].x0, g[-1].x1, size)
+            ln = Line(pno, min(c.top for c in g), max(c.bottom for c in g), g[0].x0, g[-1].x1, size, col=col)
             seq: list[Char] = []                  # visual order, with spaces put in where there are gaps
             sups = []
             lead_sup = ""
@@ -259,7 +282,7 @@ class PdfBook:
                 ln.text = ""
             lines.append(ln)
         lines.sort(key=lambda l: l.top)
-        return lines
+        return _column_order(lines) if gx is not None else lines
 
     # -- the book's norms --------------------------------------------------------
     def _body_size(self):
@@ -460,14 +483,37 @@ class PdfBook:
         nidx = 0
         for i, ls in enumerate(self.lines):
             body = [l for l in ls if l.kind in ("body", "heading")]
-            left = _mode([round(l.x0) for l in body if l.kind == "body"]) if body else 0
-            right = _mode([round(l.x1) for l in body if l.kind == "body"]) if body else 0
+            # the text's left and right edges: one pair per column on a page in two columns
+            edges = {}
+            for c in {l.col for l in body}:
+                xs = [l for l in body if l.kind == "body" and l.col == c]
+                if xs:
+                    edges[c] = (_mode([round(l.x0) for l in xs]), _mode([round(l.x1) for l in xs]))
+            whole = edges.get(0) or next(iter(edges.values()), (0, 0))
+
+            def left(ln):
+                return edges.get(ln.col, whole)[0]
+
+            def right(ln):
+                return edges.get(ln.col, whole)[1]
+
+            def runs_on(ln):
+                """The paragraph runs on past this line (to the next column or page): the line is
+                full, or stops mid-sentence."""
+                return ln.kind == "body" and (
+                    ln.text[-1:] in HYPHENS or ln.text[-1:] not in ".?!”\"’)" or
+                    (ln.x1 >= right(ln) - 2 * self.body_size and ln.text[-1:] not in ".?!”\""))
             for j, ln in enumerate(body):
                 if not ln.text:
                     continue
                 new_par = False
                 if cur is None or ln.kind == "heading" or (prev is not None and prev.kind == "heading"):
                     new_par = True
+                elif prev is not None and prev.page == ln.page and prev.col == 1 and ln.col == 2 \
+                        and ln.top < prev.top:
+                    # from the foot of the left column to the head of the right
+                    if ln.x0 > left(ln) + 0.8 * self.body_size or not runs_on(prev):
+                        new_par = True
                 elif prev is not None and prev.page == ln.page:
                     pitch = ln.top - prev.top
                     if ln.x0 > prev.x0 + 0.8 * self.body_size:      # an indented first line, or a block quote
@@ -476,10 +522,10 @@ class PdfBook:
                         new_par = True
                     elif pitch > 1.6 * self.pitch:
                         new_par = True
-                    elif prev.x1 < right - 2 * self.body_size and prev.text[-1:] in SENT_END:
+                    elif prev.x1 < right(prev) - 2 * self.body_size and prev.text[-1:] in SENT_END:
                         new_par = True
                 else:                                     # first line on a new page
-                    if ln.x0 > left + 0.8 * self.body_size or not prev_page_full:
+                    if ln.x0 > left(ln) + 0.8 * self.body_size or not prev_page_full:
                         new_par = True
                 if new_par:
                     cur = Segment("pdf", idx)
@@ -495,11 +541,8 @@ class PdfBook:
                     _append(cur, ln, prev, self, i)
                 prev = ln
             if body:
-                last = body[-1]
                 # the paragraph runs on to the next page: the last line is full, or stops mid-sentence
-                prev_page_full = last.kind == "body" and (
-                    last.text[-1:] in HYPHENS or last.text[-1:] not in ".?!”\"’)" or
-                    (last.x1 >= right - 2 * self.body_size and last.text[-1:] not in ".?!”\""))
+                prev_page_full = runs_on(body[-1])
             # notes on this page
             notes = [l for l in ls if l.kind == "note" and l.text]
             nleft = min((round(l.x0) for l in notes), default=0)
@@ -611,6 +654,127 @@ INDEX_HEADING_RE = re.compile(r"^\s*(?:(?:scripture|subject|author|name|general|
 FOLIO_RE = re.compile(r"^(?:\d{1,4}|[ivxlcdm]{1,8}|[IVXLCDM]{1,8})$")
 NOTE_NUM_RE = re.compile(r"^(\d{1,3}|[ivxlc]{1,6})[.)]?\s+(?=\S)")
 GARBLE_RE = re.compile(r"[a-z]\d[a-z]")
+
+
+def _trim_area(page, H: float):
+    """(x0, top, x1, bottom) of the page's trim box (or, failing that, its bleed box) when the PDF
+    has printer's marks around the page; None when the whole page is the page."""
+    try:
+        from pdfminer.pdftypes import resolve1
+        attrs = page.page_obj.attrs
+        media = [float(v) for v in resolve1(attrs.get("MediaBox"))]
+        for key in ("TrimBox", "BleedBox"):
+            box = resolve1(attrs.get(key))
+            if not box:
+                continue
+            x0, y0, x1, y1 = (float(v) for v in box)
+            if (x1 - x0) < (media[2] - media[0]) - 2 or (y1 - y0) < (media[3] - media[1]) - 2:
+                ox, oy = media[0], media[1]
+                return (x0 - ox, H - (y1 - oy), x1 - ox, H - (y0 - oy))
+            return None
+    except Exception:
+        pass
+    return None
+
+
+def _gutter(groups: list[list[Char]], W: float) -> float | None:
+    """The x of the gap between two columns of text, or None when the page isn't set in two
+    columns.  The gap is a strip in the middle of the page that most lines don't cross, with text
+    on both sides of it on many lines."""
+    lo, hi = int(W * 0.3), int(W * 0.7)
+    if hi - lo < 10:
+        return None
+    rows = []
+    for g in groups:
+        iv = sorted((c.x0, c.x1) for c in g if c.text.strip())
+        if iv:
+            rows.append(iv)
+    if len(rows) < 8:
+        return None
+    count = [0] * (hi - lo + 1)
+    for iv in rows:
+        hit = set()
+        for a, b in iv:
+            for x in range(max(lo, int(a)), min(hi, int(b) + 1) + 1):
+                hit.add(x)
+        for x in hit:
+            count[x - lo] += 1
+    least = min(count)
+    if least > 0.4 * len(rows):
+        return None
+    # the widest run of x at the least count; its middle
+    best, run_start = (0, None), None
+    for k, n in enumerate(count + [least + 1]):
+        if n == least and run_start is None:
+            run_start = k
+        elif n != least and run_start is not None:
+            if k - run_start > best[0]:
+                best = (k - run_start, run_start)
+            run_start = None
+    gx = lo + best[1] + best[0] / 2
+    both = 0
+    for iv in rows:
+        left = [b for a, b in iv if b < gx]
+        right = [a for a, b in iv if a > gx]
+        if left and right and min(right) - max(left) >= 8:
+            both += 1
+    return gx if both >= 6 else None
+
+
+def _keep_whole(groups: list[list[Char]], gx: float) -> list[bool]:
+    """Which lines of a two-column page are not split at the gutter: those that cross it, and the
+    smaller type below the columns (footnotes, whose justified lines may happen to leave a gap there)."""
+    info = []
+    for g in groups:
+        txt = [c for c in g if c.text.strip()]
+        crosses = any(c.x0 - 0.5 <= gx <= c.x1 + 0.5 for c in txt)
+        size = statistics.median([c.size for c in txt]) if txt else 0.0
+        info.append((crosses, size, min((c.top for c in txt), default=0.0), max((c.bottom for c in txt), default=0.0)))
+    col_sizes = [sz for cr, sz, _, _ in info if not cr and sz]
+    if not col_sizes:
+        return [True] * len(groups)
+    col = statistics.median(col_sizes)
+    last = max((bot for cr, sz, _, bot in info if not cr and sz >= 0.92 * col), default=0.0)
+    return [cr or (sz < 0.92 * col and top >= last - 1) for cr, sz, top, _ in info]
+
+
+def _column_order(lines: list[Line]) -> list[Line]:
+    """Lines (sorted top to bottom) of a page in two columns, in reading order: between lines that
+    run across the page, the left column, then the right.  A short line alone in the top or bottom
+    margin (a running head or folio) is not part of a column."""
+    def gap(a, b):
+        return b.top - a.bottom
+    n = len(lines)
+    for k in range(n):                                  # from the top
+        ln = lines[k]
+        if ln.col == 0:
+            continue
+        if k + 1 < n and gap(ln, lines[k + 1]) > 0.8 * ln.size:
+            ln.col = 0
+            continue
+        break
+    for k in range(n - 1, -1, -1):                      # from the bottom
+        ln = lines[k]
+        if ln.col == 0:
+            continue
+        if k > 0 and gap(lines[k - 1], ln) > 0.8 * ln.size:
+            ln.col = 0
+            continue
+        break
+    out, block = [], []
+
+    def flush():
+        out.extend(sorted((l for l in block if l.col == 1), key=lambda l: l.top))
+        out.extend(sorted((l for l in block if l.col == 2), key=lambda l: l.top))
+        block.clear()
+    for ln in lines:
+        if ln.col == 0:
+            flush()
+            out.append(ln)
+        else:
+            block.append(ln)
+    flush()
+    return out
 
 
 def _numval(s: str) -> int:

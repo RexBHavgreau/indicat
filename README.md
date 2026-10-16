@@ -473,9 +473,10 @@ introduced by "the book of" / "Gospel of" (or the language's equivalent).
 * If an entry appears in the body and in a note on the same page, Word prints
   one page number. The proof list flags these cases.
 * Accept or reject tracked changes before building.
-* PDFs: the text layer has to match the printed page. Multi-column pages (such as
-  the book's own index) and text in sidebars are read in layout order, which may
-  not be reading order. Adding a reference by hand works with Word manuscripts
+* PDFs: the text layer has to match the printed page. Pages in two columns are
+  read column by column; three or more columns (such as the book's own index,
+  which is left out anyway) and text in sidebars are read in layout order, which
+  may not be reading order. Adding a reference by hand works with Word manuscripts
   only.
 * Live .odt documents can't be indexed directly; export them to PDF and use the
   PDF route.

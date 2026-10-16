@@ -23,6 +23,15 @@
 * "Right-aligned, no leader" could come out with a dot leader in Word: Word
   gave the rebuilt index its own leader (dots) over Indicat's index styles. The
   index now keeps the leader you chose, also in static copies.
+* **PDFs set in two columns** are read column by column. Before, Indicat read
+  each line straight across both columns, so a reference could take its book
+  from the other column ("Ps 85:1–3; cf. Rom 5:1" beside "85:4–7" gave an
+  impossible "Romans 85:4–7"), notes were filed under the wrong page, and the
+  contexts mixed the two columns. Paragraphs now run on from one column to the
+  next; footnotes across the page are read as before.
+* Printer's marks are left out: text outside the PDF's trim (or bleed) box, such
+  as the slug line ("….indd 880  11/21/24"), is ignored, so the running foot
+  above it is recognized again instead of being read as part of a note.
 * The indexed copy turns off "Automatically update document styles", which let
   the document's template replace Indicat's index styles when Word opened it
   (your original document is not changed).
