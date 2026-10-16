@@ -33,7 +33,21 @@ becomes two printed pages, each with its own folio. Footnotes are looked for at 
 column. Tests: two-column and spread pages made with reportlab in `test_pdf.py`, plus the real
 book once Beaux sends the PDF (or pages 7–14 and 880).
 
-### 2. …
+### 2. PDF route: choose the pages to index
+
+**Wanted:** index only part of a PDF (a chapter, the body without the front or back matter).
+Not built before 2026-10-16: it isn't in the code, on any branch, or in an issue.
+
+**Proposed:** a "Pages" box next to the PDF, blank for the whole book, taking printed page
+numbers as they appear in the book ("1–350", "xi–xx, 1–350", "45"). Pages outside the range
+aren't scanned; notes and paragraphs that run on into the range from a page before it are still
+read where they continue. The range is kept with the book's settings, and shown in the proof
+list and the log.
+
+**Questions for Beaux:** printed page numbers, PDF page numbers (1 = the PDF's first page), or
+either? Also for Word manuscripts, or PDFs only?
+
+### 3. …
 
 (more to add)
 
