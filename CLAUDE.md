@@ -108,6 +108,8 @@ and for the PDF route (save it as PDF and scan that).
 - 0.4.1: the leader fix in real Word (`word_com._update_indexes` sets `Index.TabLeader` from the
   'index 1' style before updating, and puts the styles' leader back after); a PDF index from a
   real Normal.dotm and from a book template.
+- 0.4.2: the "PDF pages to index" box in the main window (not seen on screen: no tkinter here);
+  the range itself is tested (`test_pdf.test_page_range`) and was tried on the 9-page sample.
 - 0.4.2: two-column PDFs checked on 9 pages of the BiblicalMissions textbook (pp. 7–14, 880;
   impossible references 28 → 1, the one left is the book's own "2 Pet 3:14–19"); not yet on
   the whole book, nor on a PDF exported as two-page spreads.

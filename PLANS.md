@@ -35,7 +35,7 @@ becomes two printed pages, each with its own folio. Footnotes are looked for at 
 column. Tests: two-column and spread pages made with reportlab in `test_pdf.py`, plus the real
 book once Beaux sends the PDF (or pages 7–14 and 880).
 
-### 2. PDF route: choose the pages to index
+### 2. PDF route: choose the pages to index (built 2026-10-17, on the branch)
 
 **Wanted:** index only part of a PDF (a chapter, the body without the front or back matter).
 Not built before 2026-10-16: it isn't in the code, on any branch, or in an issue.
@@ -55,6 +55,13 @@ Not built before 2026-10-16: it isn't in the code, on any branch, or in an issue
   and shown in the log and the proofreading list.
 - The book's own index is already left out (found by its heading), so the range is mainly for
   front matter and other back matter.
+
+**Built:** `pdf_index.parse_pages` / `describe_pages` / `pdf_info`; `scan_pdf(pages=…)` still reads
+every page (folios, running heads, notes that run on) and keeps only the hits on the chosen
+pages; the range is kept per PDF in the `pdf_pages` setting (settings version 6). The window's
+"PDF pages to index" box echoes the printed pages at once when the PDF has page labels;
+otherwise the log gives them after the scan (folios are only known once the PDF is read).
+`--pages` on the command line. Not added to the guided build.
 
 ### 3. …
 

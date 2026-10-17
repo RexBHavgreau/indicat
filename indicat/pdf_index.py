@@ -7,6 +7,7 @@ or an OpenDocument text (.odt).
 """
 from __future__ import annotations
 
+import re
 import time
 from pathlib import Path
 
@@ -40,9 +41,99 @@ def known_word_fn(lang, defs):
     return known
 
 
+# ---------------------------------------------------------------------------
+# The pages to index (PDF page numbers: 1 = the PDF's first page)
+# ---------------------------------------------------------------------------
+_RANGE_RE = re.compile(r"^(\d+)\s*(?:(?:[-–—]|to)\s*(\d+)?)?$", re.I)
+
+
+def parse_pages(text: str, n_pages: int | None = None) -> list[tuple[int, int]]:
+    """"9–14, 21–880" -> [(9, 14), (21, 880)] (PDF page numbers, 1-based, inclusive).  "21–" runs to
+    the last page.  Blank -> [] (the whole PDF).  Raises ValueError with a message for the user."""
+    out = []
+    for part in re.split(r"[,;]", text or ""):
+        part = part.strip()
+        if not part:
+            continue
+        m = _RANGE_RE.match(part)
+        if not m:
+            raise ValueError(f"“{part}” isn't a page or a range. Type PDF page numbers, such as 9–880 or "
+                             "9–14, 21–880.")
+        a = int(m.group(1))
+        if m.group(2):
+            b = int(m.group(2))
+        elif re.search(r"[-–—]|to", part, re.I):
+            if n_pages is None:
+                raise ValueError(f"“{part}”: give the last page too, such as {a}–{a + 99}.")
+            b = n_pages
+        else:
+            b = a
+        if a < 1 or b < a:
+            raise ValueError(f"“{part}”: the first page must be 1 or more, and not after the last.")
+        if n_pages is not None and b > n_pages:
+            raise ValueError(f"“{part}”: the PDF has {n_pages} pages.")
+        out.append((a, b))
+    return sorted(out)
+
+
+def pages_text(ranges: list[tuple[int, int]]) -> str:
+    return ", ".join(str(a) if a == b else f"{a}–{b}" for a, b in ranges)
+
+
+def page_key(path: str | Path) -> str:
+    """How a PDF's page range is kept in the settings."""
+    try:
+        return str(Path(path).resolve()).lower()
+    except OSError:
+        return str(path).lower()
+
+
+def stored_pages(settings: dict, path: str | Path) -> str:
+    return (settings.get("pdf_pages") or {}).get(page_key(path), "")
+
+
+def pdf_info(path: str | Path) -> tuple[int, list[str] | None]:
+    """(number of pages, the PDF's own page labels or None), quickly, without reading the text."""
+    from pypdf import PdfReader
+    r = PdfReader(str(path))
+    labels = None
+    try:
+        if "/PageLabels" in r.trailer["/Root"]:
+            labels = list(r.page_labels)
+    except Exception:
+        labels = None
+    return len(r.pages), labels
+
+
+def describe_pages(text: str, n_pages: int, labels: list[str] | None) -> str:
+    """What a page range covers, for the window: "872 of 900 pages = printed xi–862".  Raises
+    ValueError for a range that can't be read."""
+    ranges = parse_pages(text, n_pages)
+    if not ranges:
+        return f"Blank: all {n_pages} pages."
+    count = sum(b - a + 1 for a, b in ranges)
+    if labels and len(labels) == n_pages:
+        return f"{count} of {n_pages} pages = printed pages {printed_span(labels, ranges)}."
+    return f"{count} of {n_pages} pages. The printed page numbers they cover are shown in the log after the scan."
+
+
+def printed_span(labels: list[str], ranges: list[tuple[int, int]]) -> str:
+    """The printed page numbers a range covers: "xi–862" ("PDF pages 9–880 = printed xi–862")."""
+    parts = []
+    for a, b in ranges:
+        la, lb = labels[a - 1], labels[b - 1]
+        parts.append(la if a == b else f"{la}–{lb}")
+    return ", ".join(parts)
+
+
 def scan_pdf(path: str | Path, settings: dict | None = None, distant_after: int = 15,
-             progress=None, log=print) -> PL.ScanResult:
+             progress=None, log=print, pages: str | None = None) -> PL.ScanResult:
+    """`pages`: the PDF pages to index ("9–14, 21–880"); None = the range kept for this PDF in the
+    settings; blank = all.  Every page is still read (folios, running heads and notes that run on
+    need the whole book), but only references on the chosen pages are kept."""
     settings = settings if settings is not None else SET.load()
+    if pages is None:
+        pages = stored_pages(settings, path)
     cat, lang = SET.make_context(settings)
     msgs: list[str] = []
     defs = PL.active_defs(settings, None, msgs)
@@ -50,6 +141,15 @@ def scan_pdf(path: str | Path, settings: dict | None = None, distant_after: int 
     book = PdfBook(path, known_word_fn(lang, defs),
                    (lambda d, n: progress(0.8 * d / max(1, n), "Reading the PDF")) if progress else None)
     log(f"Read {len(book.pages)} pages in {time.time() - t0:.0f} s.")
+    ranges = parse_pages(pages, len(book.pages))
+    keep = None
+    if ranges:
+        keep = {i - 1 for a, b in ranges for i in range(a, b + 1)}
+        labels = [book.label(i) for i in range(len(book.pages))]
+        note = (f"Only PDF pages {pages_text(ranges)} were indexed (printed pages "
+                f"{printed_span(labels, ranges)}; {len(keep)} of {len(book.pages)} pages).")
+        log(note)
+        msgs.append(note)
     if book.ocr:
         dropped = [d.short for d in defs if d.kind != "terms"]
         defs = [d for d in defs if d.kind == "terms"]
@@ -67,6 +167,8 @@ def scan_pdf(path: str | Path, settings: dict | None = None, distant_after: int 
     def add(seg, items, fixed=(), note_kind=None, note_ord=None):
         for h in items:
             page = book.page_of(seg, max(h.start, h.end - 1))      # where it ends, as Word does
+            if keep is not None and page not in keep:
+                continue
             inter = next((it for it in seg.interrupts if it.start < h.end and h.start < it.end), None)
             ocr_hit = any(h.start <= k < h.end for k in fixed)
             bib = getattr(seg, "biblio", False) and not do_bib
@@ -167,7 +269,7 @@ def scan_pdf(path: str | Path, settings: dict | None = None, distant_after: int 
     warnings = list(book.warnings) + msgs + list(lang.conflicts)
     if book.skipped_index:
         warnings.append(f"The book's own index (from p. {book.skipped_index}) was left out of the scan.")
-    flagged = book.flagged_pages()
+    flagged = [p for p in book.flagged_pages() if keep is None or p.index in keep]
     if flagged:
         warnings.append("Pages to check (text missing, scant or garbled): " +
                         "; ".join(f"p. {p.label} (PDF page {p.index + 1}): {p.flag}" for p in flagged[:30]) +

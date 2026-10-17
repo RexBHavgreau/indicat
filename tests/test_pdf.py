@@ -204,6 +204,46 @@ def test_two_columns():
         assert "Part 3" not in notes and "indd" not in notes, notes
 
 
+def test_page_range():
+    """Index only some PDF pages (PDF page numbers, 1 = the first page)."""
+    assert X.parse_pages("") == [] and X.parse_pages("  ") == []
+    assert X.parse_pages("9–14, 21-880", 900) == [(9, 14), (21, 880)]
+    assert X.parse_pages("45; 3 to 5", 900) == [(3, 5), (45, 45)]
+    assert X.parse_pages("21–", 900) == [(21, 900)]
+    for bad, why in (("9–x", "isn't a page"), ("14–9", "not after the last"), ("0–3", "1 or more"),
+                     ("5–901", "has 900 pages")):
+        try:
+            X.parse_pages(bad, 900)
+            raise AssertionError(bad)
+        except ValueError as exc:
+            assert why in str(exc), (bad, str(exc))
+    labels = ["", "", "i", "ii"] + [str(i) for i in range(1, 897)]
+    assert X.describe_pages("3–4, 5–10", 900, labels) == "8 of 900 pages = printed pages i–ii, 1–6."
+    assert X.describe_pages("", 900, None) == "Blank: all 900 pages."
+    assert "shown in the log after the scan" in X.describe_pages("5", 900, None)
+    with tempfile.TemporaryDirectory() as d:
+        pdf = Path(d, "Book.pdf")
+        make_book(pdf)
+        s = copy.deepcopy(DEFAULTS)
+        res = X.scan_pdf(pdf, s, log=lambda *a: None, pages="2")
+        got = {(o.ref.display() if o.ref else o.hit.raw, o.page) for o in res.occurrences}
+        assert all(pg == "2" for _, pg in got), got
+        # a word that runs on from page 1 is still caught where it ends, and so are page 2's notes
+        assert {("Deuteronomy 6:4", "2"), ("Exodus 24:8", "2"), ("Joshua 24:25", "2")} <= got, got
+        assert not any(name == "Genesis 1:1" for name, _ in got)
+        assert any("Only PDF pages 2 were indexed (printed pages 2; 1 of 2 pages)" in w for w in res.warnings), \
+            res.warnings
+        # the range kept for this PDF in the settings is used when none is given
+        s["pdf_pages"] = {X.page_key(pdf): "1"}
+        res = X.scan_pdf(pdf, s, log=lambda *a: None)
+        assert {o.page for o in res.occurrences} == {"1"}, {o.page for o in res.occurrences}
+        cols = Path(d, "Columns.pdf")
+        make_two_columns(cols)
+        res = X.scan_pdf(cols, copy.deepcopy(DEFAULTS), log=lambda *a: None, pages="2–3")
+        assert {o.page for o in res.occurrences} == {"881", "882"}
+        assert any("printed pages 881–882; 2 of 3 pages" in w for w in res.warnings), res.warnings
+
+
 def test_ocr_fixes_and_fonts():
     t, changed = ocr_fix("Gen. l:l and John 3;16 but not Chapter I: and 1; 2 or I;l")
     assert t.startswith("Gen. 1:1 and John 3:16 but not Chapter I: and 1; 2"), t

@@ -383,10 +383,23 @@ class App(tk.Tk):
         ttk.Button(top, text="Browse…", command=self._pick_out).grid(row=1, column=2, pady=(6, 0))
         self.out_note = ttk.Label(top, text="", foreground="#666")
         self.out_note.grid(row=1, column=3, columnspan=2, sticky="w", padx=(6, 0), pady=(6, 0))
+        # PDFs: the pages to index (PDF page numbers), kept for each PDF
+        self.pages_label = ttk.Label(top, text="PDF pages to index:")
+        self.pages_label.grid(row=2, column=0, sticky="w", pady=(6, 0))
+        self.pages_box = ttk.Frame(top)
+        self.pages_box.grid(row=2, column=1, columnspan=4, sticky="we", padx=6, pady=(6, 0))
+        self.pages = tk.StringVar()
+        ttk.Entry(self.pages_box, textvariable=self.pages, width=24).pack(side="left")
+        self.pages_note = ttk.Label(self.pages_box, text="", foreground="#666")
+        self.pages_note.pack(side="left", padx=(8, 0))
+        self._pdf_infos: dict = {}
+        self.pages.trace_add("write", lambda *a: self._pages_changed())
         top.columnconfigure(1, weight=1)
+        self.src.trace_add("write", lambda *a: self._refresh_pages())
         self.src.trace_add("write", lambda *a: self._refresh_out())
         self.out.trace_add("write", lambda *a: self._out_edited())
         self._refresh_out()
+        self._refresh_pages()
 
         opts = ttk.LabelFrame(self, text="Index settings (for this book)", padding=(10, 6))
         opts.pack(fill="x", padx=10, pady=4)
@@ -550,6 +563,61 @@ class App(tk.Tk):
         p = self._src_path()
         return bool(p and p.suffix.lower() == ".pdf")
 
+    # -- the pages of a PDF to index -------------------------------------------------
+    def _pdf_info(self, p: Path):
+        key = str(p)
+        if key not in self._pdf_infos:
+            from .pdf_index import pdf_info
+            try:
+                self._pdf_infos[key] = pdf_info(p)
+            except Exception:
+                self._pdf_infos[key] = None
+        return self._pdf_infos[key]
+
+    def _refresh_pages(self):
+        """Show the page box for a PDF, with the range kept for that PDF."""
+        p = self._src_path()
+        if self.is_pdf() and p.is_file():
+            from .pdf_index import stored_pages
+            self.pages_label.grid()
+            self.pages_box.grid()
+            self.pages.set(stored_pages(self.settings, p))
+            self._pages_changed()
+        else:
+            self.pages_label.grid_remove()
+            self.pages_box.grid_remove()
+
+    def _pages_changed(self) -> bool:
+        """Say what the typed range covers; False if it can't be read."""
+        p = self._src_path()
+        if not (self.is_pdf() and p and p.is_file()):
+            return True
+        info = self._pdf_info(p)
+        if info is None:
+            self.pages_note.configure(text="PDF page numbers: 1 = the PDF's first page. Blank = all pages.",
+                                      foreground="#666")
+            return True
+        from .pdf_index import describe_pages
+        try:
+            self.pages_note.configure(text=describe_pages(self.pages.get(), info[0], info[1]), foreground="#666")
+            self._store_pages()                 # kept for this PDF (saved with the other settings)
+            return True
+        except ValueError as exc:
+            self.pages_note.configure(text=str(exc), foreground="#b00020")
+            return False
+
+    def _store_pages(self):
+        p = self._src_path()
+        if not (self.is_pdf() and p):
+            return
+        from .pdf_index import page_key
+        kept = self.settings.setdefault("pdf_pages", {})
+        text = self.pages.get().strip()
+        if text:
+            kept[page_key(p)] = text
+        else:
+            kept.pop(page_key(p), None)
+
     def _pick_src(self):
         f = filedialog.askopenfilename(filetypes=[("Word documents and PDFs", "*.docx *.pdf"),
                                                   ("Word documents", "*.docx"), ("PDF files", "*.pdf")])
@@ -697,6 +765,9 @@ class App(tk.Tk):
             return
         if p.name.startswith("~$"):
             messagebox.showwarning(APP_NAME, "That is Word's temporary lock file; choose the real document.")
+            return
+        if self.is_pdf() and not self._pages_changed():
+            messagebox.showwarning(APP_NAME, "Check the PDF pages to index: " + self.pages_note.cget("text"))
             return
         self._say(f"Scanning {p.name}…")
         self._store_opts()
@@ -1024,6 +1095,7 @@ class App(tk.Tk):
         self.settings["mt_mode"] = self.mt.get() or "label"
         self.settings["index_font"] = self.font_mode.get() or "body"
         self.settings["index_layout"] = self.layout_labels.get(self.layout.get(), "single")
+        self._store_pages()
         title = self.heading.get().strip()
         ls = SET.lang_settings(self.settings, code)
         if title and title != PROFILES[code]["index_title"]:

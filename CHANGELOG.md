@@ -2,6 +2,17 @@
 
 ## 0.4.2 — not released yet
 
+**New**
+
+* **Choose the pages of a PDF to index.** A "PDF pages to index" box appears
+  when a PDF is chosen: type PDF page numbers (1 = the PDF's first page, as your
+  PDF reader shows them), such as 9–880 or 9–14, 21–880, to leave out the title
+  page, contents, endorsements and other front or back matter. The box shows
+  which printed pages the range covers (or the log does, after the scan, when
+  the PDF has no page labels), and the range is kept for that PDF. A paragraph
+  or note that runs on into the range is still read where it continues. The book's
+  own index was already left out. On the command line: `--pages 9-880`.
+
 **Fixed**
 
 * **PDFs set in two columns** are read column by column. Before, Indicat read
