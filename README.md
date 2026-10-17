@@ -134,6 +134,13 @@ from the printed page numbers, as a **Word (.docx)** or **OpenDocument (.odt)**
 file, plus the usual proofreading list. LibreOffice users can export their book
 to PDF and index it this way.
 
+**Only some pages.** A box under the manuscript, **PDF pages to index**, takes
+PDF page numbers (1 = the PDF's first page, as your PDF reader shows them):
+"9–880", or several ranges, "9–14, 21–880". Leave it blank for the whole book.
+Use it to leave out the title page, contents, endorsements and other front or
+back matter. It shows which printed pages the range covers, and Indicat keeps
+the range for that PDF. The book's own index is left out anyway.
+
 The Word index starts from **Word's Normal template**, so it has your usual page
 size, margins and styles; choose another template, or Indicat's plain style, in
 **Edit > Preferences**. Indicat's own settings still apply on top: columns,
@@ -473,9 +480,10 @@ introduced by "the book of" / "Gospel of" (or the language's equivalent).
 * If an entry appears in the body and in a note on the same page, Word prints
   one page number. The proof list flags these cases.
 * Accept or reject tracked changes before building.
-* PDFs: the text layer has to match the printed page. Multi-column pages (such as
-  the book's own index) and text in sidebars are read in layout order, which may
-  not be reading order. Adding a reference by hand works with Word manuscripts
+* PDFs: the text layer has to match the printed page. Pages in two columns are
+  read column by column; three or more columns (such as the book's own index,
+  which is left out anyway) and text in sidebars are read in layout order, which
+  may not be reading order. Adding a reference by hand works with Word manuscripts
   only.
 * Live .odt documents can't be indexed directly; export them to PDF and use the
   PDF route.

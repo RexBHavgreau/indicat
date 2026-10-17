@@ -47,6 +47,7 @@ def main(argv=None):
         sp.add_argument("--words", help="original-language word indexes to build, e.g. greek,hebrew (or none)")
         sp.add_argument("--terms", action="append", default=[], help="a term list (.txt or .csv) to index; repeatable")
         sp.add_argument("--no-scripture", action="store_true", help="don't build the Scripture index")
+        sp.add_argument("--pages", help="PDF only: the PDF pages to index, e.g. 9-880 or '9-14, 21-880'")
         sp.add_argument("--lang", choices=["en", "es", "pt", "fr", "de", "he"], help="language (default: saved setting)")
         sp.add_argument("--apocrypha", action="store_true", help="recognize the Apocrypha")
         sp.add_argument("--layout", choices=["single", "testaments", "sections"], help="index layout")
@@ -111,7 +112,10 @@ def main(argv=None):
     pdf = Path(a.docx).suffix.lower() == ".pdf"
     if pdf:
         from .pdf_index import scan_pdf
-        res = scan_pdf(a.docx, cfg)
+        try:
+            res = scan_pdf(a.docx, cfg, pages=a.pages)
+        except ValueError as exc:
+            ap.error(str(exc))
     else:
         res, _ = scan(a.docx, cfg)
     for wmsg in res.warnings:

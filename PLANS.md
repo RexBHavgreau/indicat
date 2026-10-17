@@ -1,15 +1,75 @@
 # Plans
 
-Working list for the next version. Building starts once the list has a handful of items and
-Beaux says go.
+Working list for the next version. A weekly routine ("Indicat weekly build", Saturdays 4:00 AM
+Central) builds every item here that is decided and not yet built, tests it, pushes the branch
+and runs the Windows build; items with open questions wait for Beaux. Merging and tagging stay
+with Beaux.
 
 ## 0.4.2
 
-(nothing yet)
+### 1. PDF route: two-column pages (built 2026-10-16, on the branch)
 
-## 0.4.1 (built 2026-10-14; see CHANGELOG.md)
+**Found on:** BiblicalMissionsUS textbook (PDF, 2026-10-16). Indicat reads each PDF page line by
+line across its whole width (`pdf_io._lines_of` groups characters by baseline only), so on a
+page set in two columns, or a PDF exported as two-page spreads, it reads a line of the left
+column, then the same line of the right column. Effects in that book:
 
-All four items below are built and tested here; what still needs real Word, InDesign and
+- References read with the wrong book: "Ps 85:1–3; cf. Rom 5:1" in one column, "85:4–7" in the
+  next → "Romans 85:4–7, impossible" (page 880); "vv. 3–4" given to Luke.
+- 940 "impossible chapter/verse" and many unindexed "book from context" rows; contexts that mix
+  sentences from both columns; page breaks in the middle of lines ("the‖880‖ obedient", 226 rows).
+- Notes from later pages filed as "Footnote 4" of page 8, so the review list's page order looks
+  wrong (8, 11, 12, 14, then 9).
+
+**Built:** `pdf_io._gutter` finds the strip between the columns (most lines don't cross it,
+many have text on both sides); `_keep_whole` leaves lines that cross it and the smaller type
+below the columns (footnotes) whole; `_column_order` reads left then right between full-width
+lines; `_assemble` runs a paragraph on from the left column to the right. Text outside the trim
+(or bleed) box is ignored (printer's marks, slug line), so running feet are found again. On
+the 9 sample pages: impossible references 28 → 1 (the book's own "2 Pet 3:14–19"). Spreads (two
+pages on one PDF page) are not handled yet.
+
+**Proposed at first:** find the gutter: a vertical strip that no line crosses on most of the page,
+then read the left column top to bottom, then the right. A spread (two folios on one PDF page)
+becomes two printed pages, each with its own folio. Footnotes are looked for at the foot of each
+column. Tests: two-column and spread pages made with reportlab in `test_pdf.py`, plus the real
+book once Beaux sends the PDF (or pages 7–14 and 880).
+
+### 2. PDF route: choose the pages to index (built 2026-10-17, on the branch)
+
+**Wanted:** index only part of a PDF (a chapter, the body without the front or back matter).
+Not built before 2026-10-16: it isn't in the code, on any branch, or in an issue.
+
+**Decided (2026-10-16):**
+
+- PDFs only (a Word manuscript has no pages until Word lays it out).
+- A "Pages" box next to the PDF, blank for the whole book. It takes **PDF page numbers**
+  (1 = the PDF's first page, as a PDF reader shows them), because every page has one, they
+  never repeat, and they don't depend on Indicat reading the folios: unnumbered front matter
+  (title, copyright, endorsements) and roman pages can be chosen as easily as the rest.
+- Several ranges allowed: "9–14, 21–880".
+- Indicat echoes the printed pages the range covers ("PDF pages 9–880 = printed xi–862"), so a
+  wrong number shows before the scan.
+- Pages outside the range aren't scanned; a paragraph or note that runs on into the range from
+  the page before is still read where it continues. The range is kept with the book's settings
+  and shown in the log and the proofreading list.
+- The book's own index is already left out (found by its heading), so the range is mainly for
+  front matter and other back matter.
+
+**Built:** `pdf_index.parse_pages` / `describe_pages` / `pdf_info`; `scan_pdf(pages=…)` still reads
+every page (folios, running heads, notes that run on) and keeps only the hits on the chosen
+pages; the range is kept per PDF in the `pdf_pages` setting (settings version 6). The window's
+"PDF pages to index" box echoes the printed pages at once when the PDF has page labels;
+otherwise the log gives them after the scan (folios are only known once the PDF is read).
+`--pages` on the command line. Not added to the guided build.
+
+### 3. …
+
+(more to add)
+
+## 0.4.1 (released; see CHANGELOG.md)
+
+All items below are built and tested here; what still needs real Word, InDesign and
 Windows is listed in CLAUDE.md under "Not yet checked". Built as planned, except: in item 4,
 index 3 got no change (Indicat never writes a third level), and the leader is taken from the
 'index 1' style, so it also holds for static copies.
