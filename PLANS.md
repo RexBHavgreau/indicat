@@ -5,9 +5,13 @@ Central) builds every item here that is decided and not yet built, tests it, pus
 and runs the Windows build; items with open questions wait for Beaux. Merging and tagging stay
 with Beaux.
 
-## 0.4.2
+## 0.4.3
 
-### 1. PDF route: two-column pages (built 2026-10-16, on the branch)
+(nothing yet)
+
+## 0.4.2 (release prepared 2026-10-18; see CHANGELOG.md)
+
+### 1. PDF route: two-column pages (built 2026-10-16)
 
 **Found on:** BiblicalMissionsUS textbook (PDF, 2026-10-16). Indicat reads each PDF page line by
 line across its whole width (`pdf_io._lines_of` groups characters by baseline only), so on a
@@ -35,7 +39,7 @@ becomes two printed pages, each with its own folio. Footnotes are looked for at 
 column. Tests: two-column and spread pages made with reportlab in `test_pdf.py`, plus the real
 book once Beaux sends the PDF (or pages 7–14 and 880).
 
-### 2. PDF route: choose the pages to index (built 2026-10-17, on the branch)
+### 2. PDF route: choose the pages to index (built 2026-10-17)
 
 **Wanted:** index only part of a PDF (a chapter, the body without the front or back matter).
 Not built before 2026-10-16: it isn't in the code, on any branch, or in an issue.
@@ -62,10 +66,6 @@ pages; the range is kept per PDF in the `pdf_pages` setting (settings version 6)
 "PDF pages to index" box echoes the printed pages at once when the PDF has page labels;
 otherwise the log gives them after the scan (folios are only known once the PDF is read).
 `--pages` on the command line. Not added to the guided build.
-
-### 3. …
-
-(more to add)
 
 ## 0.4.1 (released; see CHANGELOG.md)
 
