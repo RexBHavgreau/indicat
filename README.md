@@ -471,7 +471,7 @@ Names that are also people or common words (John, James, Peter, Acts, Numbers,
 Job; Juan, Santiago…) only set the book when a number follows or when they're
 introduced by "the book of" / "Gospel of" (or the language's equivalent).
 
-## Known limits in 0.4.1
+## Known limits in 0.4.2
 
 * The indexes are added at the end of the document in their own section. Move
   them afterwards if they belong before an appendix or "About the Author".

@@ -100,7 +100,7 @@ and for the PDF route (save it as PDF and scan that).
 - The user's original document is never modified; outputs are copies.
 - User-facing text is plain and specific (say what to do, not what went wrong internally).
 
-## Not yet checked in the real programs (as of 0.4.1)
+## Not yet checked in the real programs (as of 0.4.2)
 
 - 0.4.1: the update in place on Windows (0.4.1 updating to a later release): download, start
   the new version, delete the old one, shortcuts and taskbar pins retargeted (Windows may only
