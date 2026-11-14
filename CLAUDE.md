@@ -102,6 +102,9 @@ and for the PDF route (save it as PDF and scan that).
 
 ## Not yet checked in the real programs (as of 0.4.2)
 
+- 0.4.3: roman-numeral lists ("Heb. iii. 7, ix. 8, x. 15") tested on made-up text and a made-up
+  PDF only, not yet on the OCR'd book where they were found.
+
 - 0.4.1: the update in place on Windows (0.4.1 updating to a later release): download, start
   the new version, delete the old one, shortcuts and taskbar pins retargeted (Windows may only
   show a changed pin after signing out); SmartScreen/antivirus on the downloaded .exe.

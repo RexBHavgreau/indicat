@@ -229,6 +229,27 @@ def test_older_citation_styles():
         ("explicit", "Psalms 119:105"), ("explicit", "Song of Solomon 2:4"), ("check-name", "1 Chronicles 16:1")]
     hits, _ = Scanner(L).scan_segment(t, [False] * len(t), 0)        # off outside the PDF route
     assert not any(h.ref and h.ref.book == "Matt" for h in hits)
+    # lists after an older-style reference: a roman numeral and a period start a new chapter,
+    # a bare number is another verse of the same chapter
+    sc = Scanner(L, old_styles=True)
+    for t, want in (
+            ("Heb. iii. 7, ix. 8, x. 15, for this.", [("explicit", "Hebrews 3:7"), ("chain", "Hebrews 9:8"),
+                                                     ("chain", "Hebrews 10:15")]),
+            ("Matt. v. 3, 9, vi. 9.", [("explicit", "Matthew 5:3"), ("chain", "Matthew 5:9"),
+                                       ("chain", "Matthew 6:9")]),
+            ("See Heb. iii. 7; ix. 8; and x. 15–17.", [("explicit", "Hebrews 3:7"), ("chain", "Hebrews 9:8"),
+                                                       ("chain", "Hebrews 10:15–17")]),
+            ("1 Paralip. xvi. 1, 4.", [("check-name", "1 Chronicles 16:1"), ("check-name", "1 Chronicles 16:4")]),
+            ("Heb. iii. 7, xiv. 2", [("explicit", "Hebrews 3:7"), ("invalid", "Hebrews 14:2")]),
+            ("vi. 9 alone, and see p. 5, iv. 2", []),                   # no reference before: nothing taken
+            ("Heb. iii. 7, 1865, ix. 8", [("explicit", "Hebrews 3:7")]),  # a year ends the list
+            ("Matt. v. 3, ix and x", [("explicit", "Matthew 5:3")])):
+        hits, _ = sc.scan_segment(t, [False] * len(t), 0)
+        got = [(h.status, h.ref.display() if h.ref else None) for h in hits]
+        assert got == want, (t, got)
+    t = "Heb. iii. 7, ix. 8"
+    hits, _ = Scanner(L).scan_segment(t, [False] * len(t), 0)        # still off outside the PDF route
+    assert not hits, hits
 
 
 if __name__ == "__main__":

@@ -7,9 +7,27 @@ with Beaux.
 
 ## 0.4.3
 
-(nothing yet)
+### 1. PDF route: lists of references with roman chapter numbers (built 2026-10-24, on the branch)
 
-## 0.4.2 (release prepared 2026-10-18; see CHANGELOG.md)
+**Found on:** an old OCR'd book (2026-10-20). "Heb. iii. 7, ix. 8, x. 15" gives only Hebrews 3:7;
+"Matt. v. 3, 9, vi. 9" only Matthew 5:3. The modern form ("Heb. 3:7, 9:8, 10:15") gives all three.
+
+**Decided (2026-10-20):** after an older-style reference (`parser._old_rc`), carry on through a list,
+as for modern references: after a comma or semicolon (optionally "and"), another "roman. verse"
+("ix. 8", "x. 15–17") is the same book, next chapter; a bare verse (", 9") is the same chapter.
+Each item must be exactly a roman numeral, a period and a number, and only right after a
+recognized reference. **PDFs only** (older styles are only read in PDFs; Word and the InDesign
+script are not changed, so no JS port). Tests in `test_parser.py` (old styles) and `test_pdf.py`:
+the two lists above, a semicolon list, a range, and text that must not be taken ("vi. 9" alone
+with no reference before it; "see p. 5, iv. 2" after a page number).
+
+**Built:** `parser._old_list` (pattern `old_list`) after an older-style reference; items get the
+status "chain" (or the first reference's status, e.g. "check-name" for Vulgate names). The list
+stops at anything that isn't "roman. verse" or a bare verse, and where a book name begins
+("Cant. ii. 4; 1 Paralip. xvi. 1" stays two references). Tests: `test_parser.test_older_citation_styles`,
+`test_pdf.test_old_style_lists`.
+
+## 0.4.2 (released 2026-10-18; see CHANGELOG.md)
 
 ### 1. PDF route: two-column pages (built 2026-10-16)
 

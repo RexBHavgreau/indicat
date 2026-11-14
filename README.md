@@ -164,7 +164,7 @@ What it works out from the pages:
   ("Deu-‖143‖teronomy 6:4") is flagged as a *possible interrupted term*, with
   the joined word suggested, and not indexed until you include it.
 * **Older citation styles** are read in PDFs: roman chapter numbers ("Matt. v.
-  3", "Ps. cxix. 105"), chapter and verse words ("ch. iii. ver. 4"), and period
+  3", "Ps. cxix. 105", and lists such as "Heb. iii. 7, ix. 8, x. 15"), chapter and verse words ("ch. iii. ver. 4"), and period
   abbreviations (Cant., Eccles., Ecclus., Wisd., 1 Paralip. — flagged as the
   Vulgate name).
 * **OCR'd PDFs**: common slips are read through and flagged ("l" or "I" for 1,

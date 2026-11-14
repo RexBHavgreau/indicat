@@ -324,6 +324,10 @@ class Patterns:
         roman = r"(?:[ivxlc]{1,7}|[IVXLC]{1,7})"
         rng = r"(?:" + SP + "?" + DASH + SP + r"?(?P<v2>\d{1,3}))?(?!\d)(?![:.,]\d)"
         self.old_rc = re.compile(r"\.?" + SP + r"+(?P<rc>" + roman + r")\.?,?" + SP + r"*(?P<v>\d{1,3})" + rng)
+        # a list after one: "Heb. iii. 7, ix. 8; x. 15–17", "Matt. v. 3, 9, vi. 9" (a roman numeral and a
+        # period start a new chapter; a bare number is another verse of the same chapter)
+        self.old_list = re.compile(SP + r"*[,;]" + SP + r"*(?:(?:and|&)" + SP + r"+)?(?P<item>(?:(?P<rc>" + roman +
+                                   r")\." + SP + r"*)?(?P<v>\d{1,3})" + rng + r")")
         self.old_cw = re.compile(r"(?<![\w])(?:[Cc]h|[Cc]hap|[Cc]hapter)\.?" + SP + r"*(?P<c>" + roman +
                                  r"|\d{1,3})[.,]?" + SP + r"*(?:ver|vers|vs|v|verse)\.?" + SP + r"*(?P<v>\d{1,3})" +
                                  rng)
@@ -632,10 +636,12 @@ class Scanner:
                     st = "invalid"
                 hits.append(Hit(start, om.end(), r, st, flag or "older style: roman chapter number",
                                 raw=text[start:om.end()]))
+                end_at = self._old_list(text, om.end(), bid, c, st, hits)
+                c = hits[-1].ref.c1 if hits[-1].ref is not None else c
                 if st in ("explicit", "check-name"):
                     self._set_book(ctx, bid, seg_no)
                     ctx.chapter = c
-                return om.end(), None, dict(book=bid, chapter=c, status=st, end=om.end())
+                return end_at, None, dict(book=bid, chapter=c, status=st, end=end_at)
         if pt.cv_next.match(text, end):
             if not ital:
                 self._set_book(ctx, bid, seg_no)
@@ -690,6 +696,25 @@ class Scanner:
         return m.end(), None, None
 
     # -------------------------------------------------------------------------
+    def _old_list(self, text, pos, bid, chapter, status, hits) -> int:
+        """The rest of a list after an older-style reference: "Heb. iii. 7, ix. 8, x. 15".  Returns where
+        the list ends."""
+        st = "chain" if status == "explicit" else status
+        while True:
+            lm = self.pt.old_list.match(text, pos)
+            if not lm or self.lang.candidates_at(text, lm.start("item")):
+                return pos                    # no list item, or a new book ("; 1 Paralip. xvi. 1")
+            if lm.group("rc"):
+                c = roman_to_int(lm.group("rc"))
+                if not c:
+                    return pos
+                chapter = c
+            v, v2 = int(lm.group("v")), lm.group("v2")
+            r = self.ref(bid, chapter, v, "", chapter if v2 else 0, expand_short(v, int(v2)) if v2 else 0, "")
+            hits.append(Hit(lm.start("item"), lm.end(), r, st if r.valid() else "invalid",
+                            "older style: roman chapter number", raw=text[lm.start("item"):lm.end()]))
+            pos = lm.end()
+
     def _old_rc(self, text, end):
         m = self.pt.old_rc.match(text, end)
         return m if m and roman_to_int(m.group("rc")) else None

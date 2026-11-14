@@ -244,6 +244,28 @@ def test_page_range():
         assert any("printed pages 881–882; 2 of 3 pages" in w for w in res.warnings), res.warnings
 
 
+def test_old_style_lists():
+    """An old book's list with roman chapter numbers: "Heb. iii. 7, ix. 8, x. 15"."""
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+    with tempfile.TemporaryDirectory() as d:
+        pdf = Path(d, "Old.pdf")
+        c = canvas.Canvas(str(pdf), pagesize=letter)
+        for folio, line in (("41", "The priesthood is passed on (Heb. iii. 7, ix. 8, x. 15), as the"),
+                            ("42", "apostle shows; and the Sermon (Matt. v. 3, 9, vi. 9) agrees.")):
+            c.setFont("Times-Roman", BODY)
+            for k in range(8):
+                c.drawString(72, 700 - k * LEAD, line if k == 3 else "Filler text of an old book, set in one column here.")
+            c.setFont("Times-Roman", 9)
+            c.drawCentredString(306, 40, folio)
+            c.showPage()
+        c.save()
+        res = X.scan_pdf(pdf, copy.deepcopy(DEFAULTS), log=lambda *a: None)
+        got = [(o.ref.display(), o.page) for o in res.occurrences if o.ref is not None and o.include]
+        assert got == [("Hebrews 3:7", "41"), ("Hebrews 9:8", "41"), ("Hebrews 10:15", "41"),
+                       ("Matthew 5:3", "42"), ("Matthew 5:9", "42"), ("Matthew 6:9", "42")], got
+
+
 def test_ocr_fixes_and_fonts():
     t, changed = ocr_fix("Gen. l:l and John 3;16 but not Chapter I: and 1; 2 or I;l")
     assert t.startswith("Gen. 1:1 and John 3:16 but not Chapter I: and 1; 2"), t

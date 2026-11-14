@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.3 — not released yet
+
+**Fixed**
+
+* PDFs: a list of references with roman chapter numbers is read to the end, as
+  modern lists are: "Heb. iii. 7, ix. 8, x. 15" gives Hebrews 3:7, 9:8 and
+  10:15, and "Matt. v. 3, 9, vi. 9" gives Matthew 5:3, 5:9 and 6:9 (before,
+  only the first). Semicolons, "and" and verse ranges work too; the list stops
+  at anything else, such as a year or the next book.
+
 ## 0.4.2 — 2026-10-18
 
 **New**
